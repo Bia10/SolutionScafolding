@@ -913,14 +913,26 @@ Do not delete it until real API is added and the tests/benchmarks are updated.
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="<LATEST_COVERLET>">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
     <PackageReference Include="TUnit" Version="<LATEST_TUNIT>" />
   </ItemGroup>
 </Project>
 ```
+
+> ⚠️ **Code coverage with TUnit**: The `TUnit` meta package **already includes `Microsoft.Testing.Extensions.CodeCoverage` transitively** — no additional coverage package is needed. Do NOT add `coverlet.collector` or `coverlet.msbuild` — these are VSTest data collectors and are [not compatible with TUnit's MTP runner](https://tunit.dev/docs/extending/code-coverage/). Coverage is collected via the `--coverage` flag:
+>
+> ```shell
+> # Collect coverage (cobertura XML for CI tools like Codecov):
+> dotnet test --coverage --coverage-output-format cobertura
+>
+> # Multiple formats in one run:
+> dotnet test --coverage --coverage-output-format cobertura --coverage-output-format xml
+> ```
+>
+> **Viewing coverage results**:
+> - **Visual Studio** — Built-in coverage viewer (Enterprise/Community 2026+)
+> - **VS Code** — Install the [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) extension, then open the generated `coverage.cobertura.xml` to see inline coverage highlighting
+> - **ReportGenerator** — Generate HTML reports: `reportgenerator -reports:coverage.cobertura.xml -targetdir:coveragereport`
+> - **CI** — Most CI systems (GitHub Actions, Azure Pipelines) parse Cobertura format natively
 
 ### 5.1a `src/<LIBNAME>.Test/<RootClass>Test.cs`
 
@@ -959,10 +971,6 @@ public class <RootClass>Test
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="<LATEST_COVERLET>">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
     <PackageReference Include="TUnit" Version="<LATEST_TUNIT>" />
     <PackageReference Include="PublicApiGenerator" Version="<LATEST_PUBLICAPIGEN>" />
   </ItemGroup>
@@ -1013,7 +1021,6 @@ public static class AssemblyInitializeCultureTest
 > | `<LATEST_MINVER>`       | [MinVer](https://www.nuget.org/packages/MinVer/)                         | `dotnet package search MinVer`             |
 > | `<LATEST_CSHARPIER>`    | [CSharpier](https://www.nuget.org/packages/CSharpier/)                   | `dotnet package search CSharpier`          |
 > | `<LATEST_TUNIT>`        | [TUnit](https://www.nuget.org/packages/TUnit/)                           | `dotnet package search TUnit`              |
-> | `<LATEST_COVERLET>`     | [coverlet.collector](https://www.nuget.org/packages/coverlet.collector/) | `dotnet package search coverlet.collector` |
 > | `<LATEST_PUBLICAPIGEN>` | [PublicApiGenerator](https://www.nuget.org/packages/PublicApiGenerator/) | `dotnet package search PublicApiGenerator` |
 > | `<LATEST_BDN>`          | [BenchmarkDotNet](https://www.nuget.org/packages/BenchmarkDotNet/)       | `dotnet package search BenchmarkDotNet`    |
 >
@@ -1516,7 +1523,7 @@ jobs:
               run: dotnet build -c ${{ matrix.configuration }} --no-restore
 
             - name: Test
-              run: dotnet test -c ${{ matrix.configuration }} --no-build --verbosity normal --collect:"XPlat Code Coverage"
+              run: dotnet test -c ${{ matrix.configuration }} --no-build --verbosity normal --coverage --coverage-output-format cobertura
 
             - name: Upload coverage to Codecov
               if: matrix.configuration == 'Release' # Upload only once per OS to avoid duplicate reports

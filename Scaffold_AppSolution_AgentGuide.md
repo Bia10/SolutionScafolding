@@ -175,7 +175,11 @@ dotnet_diagnostic.MA0051.severity = none
 
 ### 1.9a `codecov.yml` — Optional for Apps
 
-Codecov is valuable for libraries (consumers rely on test coverage). For applications it is optional. If the user wants coverage tracking, include it from the library guide. Otherwise skip it and also skip the `coverlet.collector` package reference in test projects.
+Codecov is valuable for libraries (consumers rely on test coverage). For applications it is optional. If the user wants coverage tracking, include `codecov.yml` from the library guide. No additional coverage package is needed — TUnit already bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively.
+
+> ⚠️ **Do NOT use `coverlet.collector` or `coverlet.msbuild` with TUnit.** TUnit runs on Microsoft Testing Platform (MTP), not VSTest. Coverlet's VSTest data collectors are [not compatible with MTP](https://tunit.dev/docs/extending/code-coverage/) and will produce empty coverage. Coverage is collected via the `--coverage` flag (e.g., `dotnet test --coverage --coverage-output-format cobertura`). See the library guide's Phase 5.1 for the full explanation.
+>
+> **VS Code users**: Install the [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) extension to view inline coverage highlighting from the generated `coverage.cobertura.xml`.
 
 ### 1.10a Solution file — Deferred to Phase 10
 
@@ -381,7 +385,6 @@ At application scale, **Central Package Management (CPM)** is mandatory from day
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Testing">
     <PackageVersion Include="TUnit" Version="3.6.41" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="NSubstitute" Version="5.3.0" />
   </ItemGroup>
 
@@ -2019,7 +2022,7 @@ After all phases, the repository contains these files (substitute `<APPNAME>` an
 | Plugin/mod system | Add `<APPNAME>.Sdk/` project defining the plugin contract interfaces; this IS packable (`<IsPackable>true</IsPackable>`) and ships as a NuGet package for mod developers |
 | Docker deployment | Add `Dockerfile` and `docker-compose.yml` at repo root; CI builds and pushes container images instead of zip artifacts |
 | Team uses Rider | Replace `.slnx` with `.sln` via `dotnet new sln` + `dotnet sln add`. Keep solution folders by using `dotnet sln add --solution-folder`. Rider `.slnx` support is partial. |
-| Need code coverage tracking | Re-add `codecov.yml` from library guide; add `<PackageVersion Include="coverlet.collector" Version="..." />` to `Directory.Packages.props`; add `coverlet.collector` `<PackageReference>` to test `Directory.Build.props` |
+| Need code coverage tracking | Re-add `codecov.yml` from library guide. No additional packages are needed — TUnit already bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively. Do NOT use `coverlet.collector` — it is a VSTest data collector and [does not work with TUnit's MTP runner](https://tunit.dev/docs/extending/code-coverage/). In CI, use `dotnet test --coverage --coverage-output-format cobertura` instead of `--collect:"XPlat Code Coverage"`. **VS Code**: install [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) for inline coverage display. |
 | Multi-targeting (net8.0 + net10.0) | Change `<TargetFramework>` to `<TargetFrameworks>` in root `Directory.Build.props`; be aware this doubles build time |
 | Release versioning from CI | In CI workflow, pass `-p:Version=X.Y.Z -p:InformationalVersion=X.Y.Z+<commit-sha>` to build and publish steps |
 | Need Git commit hash in app | Add `<SourceRevisionId>$(GITHUB_SHA)</SourceRevisionId>` to root `Directory.Build.props` under a `Condition="'$(GITHUB_ACTIONS)' == 'true'"` guard. Access at runtime via `Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()`. |
