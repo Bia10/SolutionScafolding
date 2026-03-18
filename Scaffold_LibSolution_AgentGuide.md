@@ -102,11 +102,11 @@ git commit -m "ci: GitHub Actions workflow and Dependabot"
 
 ```json
 {
-    "sdk": {
-        "version": "<SDK_VERSION>",
-        "rollForward": "latestPatch",
-        "allowPrerelease": false
-    }
+  "sdk": {
+    "version": "<SDK_VERSION>",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  }
 }
 ```
 
@@ -274,10 +274,10 @@ dotnet_diagnostic.MA0051.severity = none
 
 ```json
 {
-    "threshold": 5,
-    "reporters": ["console"],
-    "ignore": ["**/__mocks__/**", "**/node_modules/**", "**/artifacts/**"],
-    "absolute": true
+  "threshold": 5,
+  "reporters": ["console"],
+  "ignore": ["**/__mocks__/**", "**/node_modules/**", "**/artifacts/**"],
+  "absolute": true
 }
 ```
 
@@ -289,10 +289,10 @@ dotnet_diagnostic.MA0051.severity = none
 
 ```json
 {
-    "default": true,
-    "MD013": false,
-    "MD033": false,
-    "MD041": false
+  "default": true,
+  "MD013": false,
+  "MD033": false,
+  "MD041": false
 }
 ```
 
@@ -304,22 +304,22 @@ dotnet_diagnostic.MA0051.severity = none
 
 ```yaml
 repos:
-    - repo: https://github.com/gitleaks/gitleaks
-      rev: <LATEST_GITLEAKS_TAG>
-      hooks:
-          - id: gitleaks
-    - repo: https://github.com/pre-commit/pre-commit-hooks
-      rev: <LATEST_PRECOMMIT_HOOKS_TAG>
-      hooks:
-          - id: end-of-file-fixer
-          - id: trailing-whitespace
-    - repo: local
-      hooks:
-          - id: csharpier
-            name: CSharpier
-            language: system
-            entry: dotnet csharpier check
-            types: [c#]
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: <LATEST_GITLEAKS_TAG>
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: <LATEST_PRECOMMIT_HOOKS_TAG>
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: local
+    hooks:
+      - id: csharpier
+        name: CSharpier
+        language: system
+        entry: dotnet csharpier check
+        types: [c#]
 ```
 
 **Why**: `gitleaks` prevents API keys, tokens, and connection strings from ever entering git history. End-of-file and trailing whitespace hooks enforce clean diffs. The **CSharpier hook** catches formatting violations before they reach CI — a local `system` hook that requires `dotnet tool restore` to have been run (see Phase 1.16). Run `pre-commit install` after cloning to activate.
@@ -334,15 +334,15 @@ repos:
 
 ```yaml
 coverage:
-    status:
-        project:
-            default:
-                target: auto
-                threshold: 0%
-        patch:
-            default:
-                target: auto
-                threshold: 0%
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 0%
+    patch:
+      default:
+        target: auto
+        threshold: 0%
 ```
 
 **Why**: Codecov integration gives per-PR coverage delta visibility. `target: auto` means "don't regress from current". `threshold: 0%` enforces zero regression — any coverage drop fails the check. Change to `1%` during early development if you expect high churn before stabilizing.
@@ -405,13 +405,13 @@ Thank you for considering contributing!
 1. Fork the repository and create a feature branch from `main`.
 2. Run `dotnet tool restore` to install local tools (CSharpier).
 3. Ensure your code passes all checks:
-    ```shell
-    dotnet build -c Release
-    dotnet test
-    dotnet csharpier check .
-    dotnet format style --verify-no-changes
-    dotnet format analyzers --verify-no-changes
-    ```
+   ```shell
+   dotnet build -c Release
+   dotnet test
+   dotnet csharpier check .
+   dotnet format style --verify-no-changes
+   dotnet format analyzers --verify-no-changes
+   ```
 ````
 
 4. Open a Pull Request against `main` with a clear description of the change.
@@ -461,14 +461,14 @@ github: [<AUTHOR>]
 
 ```json
 {
-    "version": 1,
-    "isRoot": true,
-    "tools": {
-        "csharpier": {
-            "version": "<LATEST_CSHARPIER>",
-            "commands": ["csharpier"]
-        }
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "csharpier": {
+      "version": "<LATEST_CSHARPIER>",
+      "commands": ["csharpier"]
     }
+  }
 }
 ```
 
@@ -482,10 +482,10 @@ github: [<AUTHOR>]
 
 ```json
 {
-    "printWidth": 120,
-    "useTabs": false,
-    "tabWidth": 4,
-    "endOfLine": "lf"
+  "printWidth": 120,
+  "useTabs": false,
+  "tabWidth": 4,
+  "endOfLine": "lf"
 }
 ```
 
@@ -592,16 +592,16 @@ Place a **128×128 PNG** at the repo root named `Icon.png`. This file is **requi
 **Agent note — generating a placeholder PNG**: AI agents cannot produce binary files directly. Use one of these approaches:
 
 1. **PowerShell + .NET** (no extra tools):
-    ```powershell
-    # Generate a minimal 128x128 solid-color PNG at repo root
-    Add-Type -AssemblyName System.Drawing
-    $bmp = [System.Drawing.Bitmap]::new(128, 128)
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.Clear([System.Drawing.Color]::FromArgb(92, 45, 145))  # .NET purple
-    $g.Dispose()
-    $bmp.Save("Icon.png", [System.Drawing.Imaging.ImageFormat]::Png)
-    $bmp.Dispose()
-    ```
+   ```powershell
+   # Generate a minimal 128x128 solid-color PNG at repo root
+   Add-Type -AssemblyName System.Drawing
+   $bmp = [System.Drawing.Bitmap]::new(128, 128)
+   $g = [System.Drawing.Graphics]::FromImage($bmp)
+   $g.Clear([System.Drawing.Color]::FromArgb(92, 45, 145))  # .NET purple
+   $g.Dispose()
+   $bmp.Save("Icon.png", [System.Drawing.Imaging.ImageFormat]::Png)
+   $bmp.Dispose()
+   ```
 2. **ImageMagick** (if available): `magick -size 128x128 xc:#5C2D91 Icon.png`
 3. **Manual step**: Mark as `# TODO: Add Icon.png (128×128 placeholder)` and instruct the user to provide one.
 
@@ -929,6 +929,7 @@ Do not delete it until real API is added and the tests/benchmarks are updated.
 > ```
 >
 > **Viewing coverage results**:
+>
 > - **Visual Studio** — Built-in coverage viewer (Enterprise/Community 2026+)
 > - **VS Code** — Install the [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) extension, then open the generated `coverage.cobertura.xml` to see inline coverage highlighting
 > - **ReportGenerator** — Generate HTML reports: `reportgenerator -reports:coverage.cobertura.xml -targetdir:coveragereport`
@@ -1456,9 +1457,9 @@ Console.WriteLine("OK");
 **Critical decisions**:
 
 - Pin ALL action references to **full SHA-256 commit hashes**, not floating tags. Get the hash by:
-    1. Visiting the action's GitHub page
-    2. Looking at the "latest release" commit
-    3. Using the full 40-character SHA
+  1. Visiting the action's GitHub page
+  2. Looking at the "latest release" commit
+  3. Using the full 40-character SHA
 
 - Include `step-security/harden-runner` with `egress-policy: audit` on every job
 
@@ -1472,145 +1473,145 @@ name: dotnet
 permissions: read-all
 
 on:
-    push:
-        branches: ["main"]
-    pull_request:
-        branches: ["main"]
-    workflow_dispatch:
-        inputs:
-            version:
-                description: "Release version to tag and create"
-                required: false
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to tag and create"
+        required: false
 
 env:
-    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
-    DOTNET_NOLOGO: true
-    NuGetDirectory: ${{ github.workspace }}/nuget
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_NOLOGO: true
+  NuGetDirectory: ${{ github.workspace }}/nuget
 
 jobs:
-    build-and-test:
-        strategy:
-            matrix:
-                os:
-                    [
-                        ubuntu-latest,
-                        windows-latest,
-                        macos-latest,
-                        windows-11-arm,
-                        ubuntu-24.04-arm,
-                    ]
-                configuration: [Debug, Release]
+  build-and-test:
+    strategy:
+      matrix:
+        os:
+          [
+            ubuntu-latest,
+            windows-latest,
+            macos-latest,
+            windows-11-arm,
+            ubuntu-24.04-arm,
+          ]
+        configuration: [Debug, Release]
 
-        runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
 
-        steps:
-            - name: Harden Runner
-              uses: step-security/harden-runner@<PINNED-SHA> # vX.Y.Z
-              with:
-                  egress-policy: audit
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@<PINNED-SHA> # vX.Y.Z
+        with:
+          egress-policy: audit
 
-            - uses: actions/checkout@<PINNED-SHA> # vX.Y.Z
+      - uses: actions/checkout@<PINNED-SHA> # vX.Y.Z
 
-            - name: Setup .NET (global.json)
-              uses: actions/setup-dotnet@<PINNED-SHA> # vX.Y.Z
-              with:
-                  global-json-file: global.json
+      - name: Setup .NET (global.json)
+        uses: actions/setup-dotnet@<PINNED-SHA> # vX.Y.Z
+        with:
+          global-json-file: global.json
 
-            - name: Restore dependencies
-              run: dotnet restore
+      - name: Restore dependencies
+        run: dotnet restore
 
-            - name: Build
-              run: dotnet build -c ${{ matrix.configuration }} --no-restore
+      - name: Build
+        run: dotnet build -c ${{ matrix.configuration }} --no-restore
 
-            - name: Test
-              run: dotnet test -c ${{ matrix.configuration }} --no-build --verbosity normal --coverage --coverage-output-format cobertura
+      - name: Test
+        run: dotnet test -c ${{ matrix.configuration }} --no-build --verbosity normal --coverage --coverage-output-format cobertura
 
-            - name: Upload coverage to Codecov
-              if: matrix.configuration == 'Release' # Upload only once per OS to avoid duplicate reports
-              uses: codecov/codecov-action@<PINNED-SHA> # vX.Y.Z
-              with:
-                  flags: ${{ matrix.os }}
-                  token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload coverage to Codecov
+        if: matrix.configuration == 'Release' # Upload only once per OS to avoid duplicate reports
+        uses: codecov/codecov-action@<PINNED-SHA> # vX.Y.Z
+        with:
+          flags: ${{ matrix.os }}
+          token: ${{ secrets.CODECOV_TOKEN }}
 
-    format:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Harden Runner
-              uses: step-security/harden-runner@<PINNED-SHA> # vX.Y.Z
-              with:
-                  egress-policy: audit
-            - uses: actions/checkout@<PINNED-SHA>
-            - name: Setup .NET
-              uses: actions/setup-dotnet@<PINNED-SHA>
-              with:
-                  global-json-file: global.json
-            - name: Restore tools
-              run: dotnet tool restore
-            - name: CSharpier verify no changes
-              run: dotnet csharpier check .
-            - name: Format style verify no changes
-              run: dotnet format style --verify-no-changes
-            - name: Format analyzers verify no changes
-              run: dotnet format analyzers --verify-no-changes
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@<PINNED-SHA> # vX.Y.Z
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@<PINNED-SHA>
+      - name: Setup .NET
+        uses: actions/setup-dotnet@<PINNED-SHA>
+        with:
+          global-json-file: global.json
+      - name: Restore tools
+        run: dotnet tool restore
+      - name: CSharpier verify no changes
+        run: dotnet csharpier check .
+      - name: Format style verify no changes
+        run: dotnet format style --verify-no-changes
+      - name: Format analyzers verify no changes
+        run: dotnet format analyzers --verify-no-changes
 
-    pack:
-        runs-on: windows-latest
-        steps:
-            - name: Harden Runner
-              uses: step-security/harden-runner@<PINNED-SHA>
-              with:
-                  egress-policy: audit
-            - uses: actions/checkout@<PINNED-SHA>
-              with:
-                  fetch-depth: 0 # full history for MinVer
-            - name: Create tag (to set version)
-              if: ${{ github.event.inputs.version != '' && github.actor == '<AUTHOR>' }}
-              run: git tag v${{ github.event.inputs.version }}
-            - name: Setup .NET
-              uses: actions/setup-dotnet@<PINNED-SHA>
-              with:
-                  global-json-file: global.json
-            - name: Pack NuGet package
-              run: dotnet pack -c Release --output ${{ env.NuGetDirectory }}
-            - uses: actions/upload-artifact@<PINNED-SHA>
-              with:
-                  name: nuget
-                  if-no-files-found: error
-                  retention-days: 7
-                  path: ${{ env.NuGetDirectory }}/*nupkg
-
-    create-release-push:
-        needs: [build-and-test, format, pack]
-        runs-on: windows-latest
-        permissions:
-            contents: write
-            id-token: write # for OIDC
+  pack:
+    runs-on: windows-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@<PINNED-SHA>
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@<PINNED-SHA>
+        with:
+          fetch-depth: 0 # full history for MinVer
+      - name: Create tag (to set version)
         if: ${{ github.event.inputs.version != '' && github.actor == '<AUTHOR>' }}
+        run: git tag v${{ github.event.inputs.version }}
+      - name: Setup .NET
+        uses: actions/setup-dotnet@<PINNED-SHA>
+        with:
+          global-json-file: global.json
+      - name: Pack NuGet package
+        run: dotnet pack -c Release --output ${{ env.NuGetDirectory }}
+      - uses: actions/upload-artifact@<PINNED-SHA>
+        with:
+          name: nuget
+          if-no-files-found: error
+          retention-days: 7
+          path: ${{ env.NuGetDirectory }}/*nupkg
 
-        steps:
-            - name: Harden Runner
-              uses: step-security/harden-runner@<PINNED-SHA>
-              with:
-                  egress-policy: audit
-            - uses: actions/checkout@<PINNED-SHA>
-            - name: Download nuget packages
-              uses: actions/download-artifact@<PINNED-SHA>
-              with:
-                  name: nuget
-                  path: ${{ env.NuGetDirectory }}
-            - name: Setup .NET
-              uses: actions/setup-dotnet@<PINNED-SHA>
-              with:
-                  global-json-file: global.json
-            - name: NuGet login (OIDC)
-              uses: NuGet/login@<PINNED-SHA> # v1.0+ — must be SHA-pinned like all other actions
-              id: login
-              with:
-                  user: ${{ secrets.NUGET_USER }}
-            - name: Push nupkg
-              run: dotnet nuget push ${{ env.NuGetDirectory }}/<LIBNAME>.${{ github.event.inputs.version }}.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-            - name: Push snupkg
-              run: dotnet nuget push ${{ env.NuGetDirectory }}/<LIBNAME>.${{ github.event.inputs.version }}.snupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+  create-release-push:
+    needs: [build-and-test, format, pack]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write # for OIDC
+    if: ${{ github.event.inputs.version != '' && github.actor == '<AUTHOR>' }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@<PINNED-SHA>
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@<PINNED-SHA>
+      - name: Download nuget packages
+        uses: actions/download-artifact@<PINNED-SHA>
+        with:
+          name: nuget
+          path: ${{ env.NuGetDirectory }}
+      - name: Setup .NET
+        uses: actions/setup-dotnet@<PINNED-SHA>
+        with:
+          global-json-file: global.json
+      - name: NuGet login (OIDC)
+        uses: NuGet/login@<PINNED-SHA> # v1.0+ — must be SHA-pinned like all other actions
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+      - name: Push nupkg
+        run: dotnet nuget push ${{ env.NuGetDirectory }}/<LIBNAME>.${{ github.event.inputs.version }}.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Push snupkg
+        run: dotnet nuget push ${{ env.NuGetDirectory }}/<LIBNAME>.${{ github.event.inputs.version }}.snupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 ```
 
 **How to get pinned SHAs**: Go to each action's GitHub release page and copy the commit SHA for the version you want. Pin to an exact 40-char SHA — not a tag. Update SHAs periodically (Dependabot will do this automatically if configured).
@@ -1626,14 +1627,14 @@ git ls-remote --tags https://github.com/actions/checkout | tail -1
 | Placeholder in workflow       | Action                        | Minimum version | SHA (fill before scaffolding)      |
 | ----------------------------- | ----------------------------- | --------------- | ---------------------------------- |
 | `step-security/harden-runner` | `step-security/harden-runner` | v2.13+          | `________________________________` |
-| `actions/checkout`            | `actions/checkout`            | v4.2+           | `________________________________` |
-| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v4.3+           | `________________________________` |
+| `actions/checkout`            | `actions/checkout`            | v6.0+           | `________________________________` |
+| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5.0+           | `________________________________` |
 | `codecov/codecov-action`      | `codecov/codecov-action`      | v5.4+           | `________________________________` |
-| `actions/upload-artifact`     | `actions/upload-artifact`     | v4.6+           | `________________________________` |
-| `actions/download-artifact`   | `actions/download-artifact`   | v4.2+           | `________________________________` |
+| `actions/upload-artifact`     | `actions/upload-artifact`     | v7.0+           | `________________________________` |
+| `actions/download-artifact`   | `actions/download-artifact`   | v8.0+           | `________________________________` |
 | `NuGet/login`                 | `NuGet/login`                 | v1.0+           | `________________________________` |
 
-If the table above is empty at scaffold time, the agent **must** use version tags as a temporary fallback (e.g., `actions/checkout@v4`) and add a `TODO:` comment on each line: `# TODO: Pin to full SHA before merging to main`. The Phase 13 validation checklist will catch these.
+If the table above is empty at scaffold time, the agent **must** use version tags as a temporary fallback (e.g., `actions/checkout@v6`) and add a `TODO:` comment on each line: `# TODO: Pin to full SHA before merging to main`. The Phase 13 validation checklist will catch these.
 
 ---
 
@@ -1644,18 +1645,18 @@ Automatically opens PRs to keep action SHAs and NuGet package versions current:
 ```yaml
 version: 2
 updates:
-    - package-ecosystem: "github-actions"
-      directory: "/"
-      schedule:
-          interval: "weekly"
-      commit-message:
-          prefix: "ci"
-    - package-ecosystem: "nuget"
-      directory: "/src"
-      schedule:
-          interval: "monthly"
-      commit-message:
-          prefix: "deps"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+  - package-ecosystem: "nuget"
+    directory: "/src"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "deps"
 ```
 
 ---

@@ -12,6 +12,7 @@
 The [Library Scaffold Guide](NietrasScaffold_LibSolution_AgentGuide.md) targets a **single NuGet library** (or a small set of related libraries) with satellite test/benchmark projects (~6 projects, 36 files). This guide targets a **large application** with many internal libraries — the kind of solution where you open Visual Studio and see 100+ projects.
 
 **Reused verbatim** from the library guide (read those sections there — not duplicated here):
+
 - Phase 1.1 `global.json`
 - Phase 1.2 `nuget.config`
 - Phase 1.3 `.gitignore` (with additions noted below)
@@ -28,6 +29,7 @@ The [Library Scaffold Guide](NietrasScaffold_LibSolution_AgentGuide.md) targets 
 - Phase 1.17 Issue/PR templates
 
 **Replaced entirely** in this guide:
+
 - Solution file (`.slnx`) — needs solution folders for 100+ projects
 - `Directory.Build.props` — needs hierarchical layered configuration
 - Project structure — layered domain folders, not flat `src/`
@@ -38,6 +40,7 @@ The [Library Scaffold Guide](NietrasScaffold_LibSolution_AgentGuide.md) targets 
 - Benchmarks — optional profiling harness, not comparison-against-competitors
 
 **Not applicable** (library-only concerns removed):
+
 - NuGet packaging (Icon.png, PackageReadmeFile, snupkg, MinVer)
 - ReadMeTest pattern (README-sync from test code)
 - ComparisonBenchmarks against competing libraries
@@ -50,24 +53,24 @@ The [Library Scaffold Guide](NietrasScaffold_LibSolution_AgentGuide.md) targets 
 
 Ask the user for (or infer from context):
 
-| Variable | Example | Notes |
-|---|---|---|
-| `APPNAME` | `Edelstein` | PascalCase; becomes solution name and exe name |
-| `ROOTNS` | `Edelstein` | Root namespace prefix; all projects use `<ROOTNS>.<Layer>.<Module>` |
-| `DESCRIPTION` | `MapleStory v95 game client reimplementation` | One sentence for README |
-| `AUTHOR` | `yourname` | GitHub username |
-| `DOTNET_VERSION` | `net10.0` | Target framework for all projects |
-| `CSHARP_VERSION` | `14.0` | Match to chosen .NET version |
-| `SDK_VERSION` | `10.0.103` | Exact SDK version from `dotnet --version` |
-| `GITHUB_URL` | `https://github.com/you/APPNAME` | Full repo URL |
-| `LICENSE` | `MIT` | License type |
-| `YEAR` | `2026` | Copyright year |
-| `COMPANY` | `yourname` | Used in copyright |
-| `TARGET_PLATFORMS` | `win-x64` | Semicolon-separated RIDs for publish: `win-x64;linux-x64` |
-| `NEEDS_UNSAFE` | `true` | true for P/Invoke, bit manipulation, SIMD, packet manipulation |
-| `NEEDS_NATIVE` | `true` | true if shipping native `.dll`/`.so` alongside the exe |
-| `APP_SDK` | `Microsoft.NET.Sdk` | SDK for the app project. Use `Microsoft.NET.Sdk` for console, or custom for windowed apps |
-| `DOMAIN_LAYERS` | (see Phase 2) | Ordered list of domain layer folders and their purpose |
+| Variable           | Example                                       | Notes                                                                                     |
+| ------------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `APPNAME`          | `Edelstein`                                   | PascalCase; becomes solution name and exe name                                            |
+| `ROOTNS`           | `Edelstein`                                   | Root namespace prefix; all projects use `<ROOTNS>.<Layer>.<Module>`                       |
+| `DESCRIPTION`      | `MapleStory v95 game client reimplementation` | One sentence for README                                                                   |
+| `AUTHOR`           | `yourname`                                    | GitHub username                                                                           |
+| `DOTNET_VERSION`   | `net10.0`                                     | Target framework for all projects                                                         |
+| `CSHARP_VERSION`   | `14.0`                                        | Match to chosen .NET version                                                              |
+| `SDK_VERSION`      | `10.0.103`                                    | Exact SDK version from `dotnet --version`                                                 |
+| `GITHUB_URL`       | `https://github.com/you/APPNAME`              | Full repo URL                                                                             |
+| `LICENSE`          | `MIT`                                         | License type                                                                              |
+| `YEAR`             | `2026`                                        | Copyright year                                                                            |
+| `COMPANY`          | `yourname`                                    | Used in copyright                                                                         |
+| `TARGET_PLATFORMS` | `win-x64`                                     | Semicolon-separated RIDs for publish: `win-x64;linux-x64`                                 |
+| `NEEDS_UNSAFE`     | `true`                                        | true for P/Invoke, bit manipulation, SIMD, packet manipulation                            |
+| `NEEDS_NATIVE`     | `true`                                        | true if shipping native `.dll`/`.so` alongside the exe                                    |
+| `APP_SDK`          | `Microsoft.NET.Sdk`                           | SDK for the app project. Use `Microsoft.NET.Sdk` for console, or custom for windowed apps |
+| `DOMAIN_LAYERS`    | (see Phase 2)                                 | Ordered list of domain layer folders and their purpose                                    |
 
 ### Domain Layer Interview
 
@@ -171,7 +174,7 @@ dotnet_diagnostic.MA0008.severity = none
 dotnet_diagnostic.MA0051.severity = none
 ```
 
-**CSharpier integration note**: The \`.editorconfig\` must set \IDE0055.severity = none\ -- **do not use \rror\**. CSharpier owns whitespace formatting (indentation, line wrapping, brace placement). \dotnet format\ must always be run as two explicit sub-checks -- \dotnet format style\ and \dotnet format analyzers\ -- never as bare \dotnet format\. Running bare \dotnet format\ triggers the \whitespace\ sub-check which rewrites CSharpier's Allman-style brace formatting, producing \WHITESPACE\ errors in CI even on correctly formatted code. See the library guide's Phase 1.16a for the full explanation.
+**CSharpier integration note**: The \`.editorconfig\` must set \IDE0055.severity = none\ -- \*\*do not use \rror\*\*. CSharpier owns whitespace formatting (indentation, line wrapping, brace placement). \dotnet format\ must always be run as two explicit sub-checks -- \dotnet format style\ and \dotnet format analyzers\ -- never as bare \dotnet format\. Running bare \dotnet format\ triggers the \whitespace\ sub-check which rewrites CSharpier's Allman-style brace formatting, producing \WHITESPACE\ errors in CI even on correctly formatted code. See the library guide's Phase 1.16a for the full explanation.
 
 ### 1.9a `codecov.yml` — Optional for Apps
 
@@ -212,19 +215,20 @@ Not required (no NuGet package). If the application has a window icon or tray ic
 <DESCRIPTION>
 
 ## Architecture
+```
 
-```
 src/
-├── Core/           Primitives, math, collections, memory
-├── Data/           Asset loading, templates, string tables
-├── Crypto/         CRC, encryption, packet cipher
-├── Network/        Protocol I/O, connection management
-├── Game/           Game logic: combat, inventory, quests
-├── Rendering/      Graphics, sprites, animation
-├── UI/             UI framework, windows, controls
-├── Audio/          Sound effects, BGM
-└── App/            Executable entry point
-```
+├── Core/ Primitives, math, collections, memory
+├── Data/ Asset loading, templates, string tables
+├── Crypto/ CRC, encryption, packet cipher
+├── Network/ Protocol I/O, connection management
+├── Game/ Game logic: combat, inventory, quests
+├── Rendering/ Graphics, sprites, animation
+├── UI/ UI framework, windows, controls
+├── Audio/ Sound effects, BGM
+└── App/ Executable entry point
+
+````
 
 See [Solution Structure](#solution-structure) for the full project breakdown.
 
@@ -238,7 +242,7 @@ See [Solution Structure](#solution-structure) for the full project breakdown.
 
 ```shell
 dotnet tool restore   # Install local tools (CSharpier formatter)
-```
+````
 
 ### Build
 
@@ -268,17 +272,17 @@ dotnet Build.cs publish win-x64
 
 ## Solution Structure
 
-| Layer | Projects | Depends On |
-|---|---|---|
-| `Core` | Primitives, math, collections | (none — leaf layer) |
-| `Data` | Asset loading, templates | Core |
-| `Crypto` | CRC, cipher | Core |
-| `Network` | Packets, connection | Core, Crypto |
-| `Game` | Combat, inventory, quest, field | Core, Data, Network |
-| `Rendering` | Graphics, sprites, animation | Core, Data |
-| `UI` | Windows, controls, text | Core, Rendering |
-| `Audio` | SFX, BGM | Core, Data |
-| `App` | Entry point | All layers |
+| Layer       | Projects                        | Depends On          |
+| ----------- | ------------------------------- | ------------------- |
+| `Core`      | Primitives, math, collections   | (none — leaf layer) |
+| `Data`      | Asset loading, templates        | Core                |
+| `Crypto`    | CRC, cipher                     | Core                |
+| `Network`   | Packets, connection             | Core, Crypto        |
+| `Game`      | Combat, inventory, quest, field | Core, Data, Network |
+| `Rendering` | Graphics, sprites, animation    | Core, Data          |
+| `UI`        | Windows, controls, text         | Core, Rendering     |
+| `Audio`     | SFX, BGM                        | Core, Data          |
+| `App`       | Entry point                     | All layers          |
 
 ## Development
 
@@ -321,7 +325,8 @@ To load a subset of the solution in your IDE:
 ## License
 
 [<LICENSE>](<GITHUB_URL>/blob/main/LICENSE) © <YEAR> <COMPANY>
-```
+
+````
 
 **Agent note**: Update the Architecture tree and Solution Structure table to match the user's actual `DOMAIN_LAYERS`. The examples above use the game client breakdown.
 
@@ -396,15 +401,16 @@ At application scale, **Central Package Management (CPM)** is mandatory from day
   </ItemGroup>
 
 </Project>
-```
+````
 
 **Critical rules for CPM**:
+
 - **All `<PackageReference>` in `.csproj` files omit `Version`** — the version comes only from `Directory.Packages.props`.
 - **`CentralPackageTransitivePinningEnabled`** pins transitive dependencies too, preventing supply-chain version confusion.
 - Package versions shown above are **examples** — resolve current stable versions via `dotnet package search <name> --take 1` before scaffolding.
 - Organize by labeled `<ItemGroup>` sections for readability. With 50+ packages, flat lists become unmanageable.
 
-**Agent note**: The package list above is a **starter template for a game client**. Remove packages the user doesn't need. Add domain-specific packages (graphics libraries, audio libraries, etc.) as the user specifies them. The point is the *structure*, not the exact package set. CSharpier.MsBuild is the one **non-optional** package — it enforces formatting from build one.
+**Agent note**: The package list above is a **starter template for a game client**. Remove packages the user doesn't need. Add domain-specific packages (graphics libraries, audio libraries, etc.) as the user specifies them. The point is the _structure_, not the exact package set. CSharpier.MsBuild is the one **non-optional** package — it enforces formatting from build one.
 
 > **Resolving `<LATEST_CSHARPIER>`**: Run `dotnet package search CSharpier --take 1` or visit [nuget.org/packages/CSharpier](https://www.nuget.org/packages/CSharpier/). The version in `Directory.Packages.props` must match the version in `.config/dotnet-tools.json` — they are the same tool, referenced in two ways (MSBuild analyzer vs CLI tool).
 
@@ -486,6 +492,7 @@ Settings that apply to **every single project** — source code, tests, benchmar
 ```
 
 **What's NOT here** (compared to the library guide):
+
 - No `MinVer` — applications use assembly version, `Version` property, or build-injected version
 - No `<IsPackable>` default — set per-project or per-tier
 - No NuGet metadata — we're not shipping packages
@@ -790,12 +797,12 @@ public void Rendering_DoesNotReference_Network()
 
 A layer starts as **one project**. Split into multiple projects when:
 
-| Signal | Action |
-|---|---|
-| Two subsystems within a layer have **no shared types** | Split: `Game.Combat`, `Game.Inventory` |
-| One part of a layer needs different dependencies | Split: `Rendering` (abstract) vs `Rendering.DirectX` (platform-specific) |
-| Build time within one project exceeds ~5 seconds | Consider splitting by subdomain |
-| A test project needs to reference only part of a layer | Split the layer so the test references the smaller piece |
+| Signal                                                 | Action                                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Two subsystems within a layer have **no shared types** | Split: `Game.Combat`, `Game.Inventory`                                   |
+| One part of a layer needs different dependencies       | Split: `Rendering` (abstract) vs `Rendering.DirectX` (platform-specific) |
+| Build time within one project exceeds ~5 seconds       | Consider splitting by subdomain                                          |
+| A test project needs to reference only part of a layer | Split the layer so the test references the smaller piece                 |
 
 Do **not** split preemptively. Start with one project per layer and split as the codebase grows.
 
@@ -820,6 +827,7 @@ All library projects within the solution follow this minimal template. The heavy
 ```
 
 **That's it.** Compare this to the library guide's 50-line `.csproj` — everything else is inherited:
+
 - `TargetFramework` → from root `Directory.Build.props`
 - `Nullable`, `ImplicitUsings`, `LangVersion` → from root
 - `AllowUnsafeBlocks` → from `src/Directory.Build.props`
@@ -881,6 +889,7 @@ When a library exposes internal APIs to its test project:
 Each library project needs at least one compilable file. Create a minimal entry point per project:
 
 **`src/Core/<APPNAME>.Core/Primitives/FieldId.cs`** — Example strongly-typed ID:
+
 ```csharp
 namespace <ROOTNS>.Core.Primitives;
 
@@ -896,6 +905,7 @@ public readonly record struct FieldId(int Value)
 ```
 
 **`src/Crypto/<APPNAME>.Crypto/MapleCrc.cs`** — Example placeholder:
+
 ```csharp
 namespace <ROOTNS>.Crypto;
 
@@ -1161,18 +1171,18 @@ public class StartupTests
 
 ### 7.4 Which Layers Get Test Projects?
 
-| Layer | Test project? | Rationale |
-|---|---|---|
-| Core | Yes, always | Foundation — must be rock solid |
-| Data | Yes | Data parsing correctness is critical |
-| Crypto | Yes, always | Crypto bugs are security vulnerabilities |
-| Network | Yes | Protocol correctness |
-| Game (each sub) | Yes per subsystem | Business logic — highest bug density |
-| Rendering | Optional | Hard to unit test graphics; prefer visual/manual testing |
-| UI | Optional | Same as Rendering |
-| Audio | Optional | Same |
-| App | No unit tests | Tested via Integration.Tests |
-| Benchmarks | No | Benchmarks ARE the test |
+| Layer           | Test project?     | Rationale                                                |
+| --------------- | ----------------- | -------------------------------------------------------- |
+| Core            | Yes, always       | Foundation — must be rock solid                          |
+| Data            | Yes               | Data parsing correctness is critical                     |
+| Crypto          | Yes, always       | Crypto bugs are security vulnerabilities                 |
+| Network         | Yes               | Protocol correctness                                     |
+| Game (each sub) | Yes per subsystem | Business logic — highest bug density                     |
+| Rendering       | Optional          | Hard to unit test graphics; prefer visual/manual testing |
+| UI              | Optional          | Same as Rendering                                        |
+| Audio           | Optional          | Same                                                     |
+| App             | No unit tests     | Tested via Integration.Tests                             |
+| Benchmarks      | No                | Benchmarks ARE the test                                  |
 
 **Rule**: Create a test project for every layer that has **deterministic, assertable behavior**. Skip layers that are primarily side-effect-driven (rendering, audio) unless you have a headless test harness.
 
@@ -1538,6 +1548,7 @@ A 100-project solution is unnavigable without solution folders. `.slnx` supports
 Solution filters let developers load a subset of the solution. This is essential when the full solution takes 30+ seconds to load:
 
 **`Core.slnf`** — Just the core layer and its tests:
+
 ```json
 {
   "solution": {
@@ -1551,6 +1562,7 @@ Solution filters let developers load a subset of the solution. This is essential
 ```
 
 **`Network.slnf`** — Network stack with transitive dependencies:
+
 ```json
 {
   "solution": {
@@ -1569,6 +1581,7 @@ Solution filters let developers load a subset of the solution. This is essential
 ```
 
 **`Game.slnf`** — Game logic with all transitive dependencies:
+
 ```json
 {
   "solution": {
@@ -1591,16 +1604,16 @@ Solution filters let developers load a subset of the solution. This is essential
 }
 ```
 
-**Rule**: Every `.slnf` must include *all transitive `ProjectReference` dependencies* of the projects it lists. If `Network` depends on `Core` and `Crypto`, the Network filter must include all three. Visual Studio will error on load if a referenced project is missing from the filter.
+**Rule**: Every `.slnf` must include _all transitive `ProjectReference` dependencies_ of the projects it lists. If `Network` depends on `Core` and `Crypto`, the Network filter must include all three. Visual Studio will error on load if a referenced project is missing from the filter.
 
 ### 10.3 Project Scaling Guidance
 
-| Project count | Strategy |
-|---|---|
-| 1–15 | Open the `.slnx` directly. No filters needed. |
-| 15–40 | Create 2–3 `.slnf` files for the most-edited layers. |
-| 40–80 | Create one `.slnf` per major domain layer. Add `All.slnf` as a convenience alias. |
-| 80+ | Same as above, plus consider splitting into multiple `.slnx` solutions with shared project references if build times exceed 60 seconds. |
+| Project count | Strategy                                                                                                                                |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1–15          | Open the `.slnx` directly. No filters needed.                                                                                           |
+| 15–40         | Create 2–3 `.slnf` files for the most-edited layers.                                                                                    |
+| 40–80         | Create one `.slnf` per major domain layer. Add `All.slnf` as a convenience alias.                                                       |
+| 80+           | Same as above, plus consider splitting into multiple `.slnx` solutions with shared project references if build times exceed 60 seconds. |
 
 ---
 
@@ -1773,11 +1786,30 @@ jobs:
 ```
 
 **Key differences from the library CI**:
+
 - No NuGet pack/push — replaced by `dotnet publish` + artifact upload
 - No Codecov — optional for apps
 - OS matrix is smaller (linux + windows, not 5 OSes) — expand if you need macOS/ARM
 - Release creates a GitHub Release with zipped binaries, not a NuGet push
 - Version is driven by `workflow_dispatch` input or CI run number, not MinVer
+
+**Agent note — resolving `<PINNED-SHA>` placeholders**: AI agents cannot browse GitHub at scaffold time. Before scaffolding, the user (or a setup script) must populate the SHA lookup table below. Run the helper command for each action to get the current commit hash:
+
+```shell
+# Example: resolve actions/checkout latest release SHA
+git ls-remote --tags https://github.com/actions/checkout | tail -1
+# Or visit: https://github.com/actions/checkout/releases → copy commit SHA
+```
+
+| Placeholder in workflow       | Action                        | Minimum version | SHA (fill before scaffolding)      |
+| ----------------------------- | ----------------------------- | --------------- | ---------------------------------- |
+| `step-security/harden-runner` | `step-security/harden-runner` | v2.13+          | `________________________________` |
+| `actions/checkout`            | `actions/checkout`            | v6.0+           | `________________________________` |
+| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5.0+           | `________________________________` |
+| `actions/upload-artifact`     | `actions/upload-artifact`     | v7.0+           | `________________________________` |
+| `actions/download-artifact`   | `actions/download-artifact`   | v8.0+           | `________________________________` |
+
+If the table above is empty at scaffold time, the agent **must** use version tags as a temporary fallback (e.g., `actions/checkout@v6`) and add a `TODO:` comment on each line: `# TODO: Pin to full SHA before merging to main`. The Phase 14 validation checklist will catch these.
 
 ### 11.2 `.github/dependabot.yml`
 
@@ -1823,6 +1855,7 @@ For complex publish scenarios, create publish profiles:
 ```
 
 Create one per target platform. Invoke via:
+
 ```shell
 dotnet publish src/App/<APPNAME>/<APPNAME>.csproj /p:PublishProfile=win-x64
 ```
@@ -1834,6 +1867,7 @@ dotnet publish src/App/<APPNAME>/<APPNAME>.csproj /p:PublishProfile=win-x64
 Before declaring the scaffold complete, verify:
 
 ### Build and Test
+
 - [ ] `dotnet build -c Debug` passes with zero warnings
 - [ ] `dotnet build -c Release` passes with zero warnings (CSharpier.MsBuild checks formatting automatically)
 - [ ] `dotnet test -c Debug` passes (all test projects)
@@ -1844,12 +1878,14 @@ Before declaring the scaffold complete, verify:
 - [ ] `dotnet Build.cs format check` passes (runs both CSharpier + dotnet format)
 
 ### Application
+
 - [ ] `dotnet run --project src/App/<APPNAME>/<APPNAME>.csproj` starts and exits cleanly
 - [ ] `dotnet Build.cs run` starts and exits cleanly
 - [ ] `dotnet Build.cs publish win-x64` produces output in `publish/win-x64/`
 - [ ] The published executable runs standalone
 
 ### Solution Structure
+
 - [ ] `.slnx` lists every `.csproj` in the repository
 - [ ] `.slnx` solution folders match the `src/` directory layout
 - [ ] No layer violates the dependency rules (e.g., Core references nothing, Rendering doesn't reference Network)
@@ -1857,6 +1893,7 @@ Before declaring the scaffold complete, verify:
 - [ ] `Directory.Packages.props` has no placeholder versions — all resolved to real values
 
 ### CI and Repository Health
+
 - [ ] All action SHAs in `.github/workflows/dotnet.yml` are 40-char hashes (or have `# TODO:` comments)
 - [ ] `.github/dependabot.yml` exists
 - [ ] `SECURITY.md` exists
@@ -1866,10 +1903,12 @@ Before declaring the scaffold complete, verify:
 - [ ] `.github/ISSUE_TEMPLATE/` and `PULL_REQUEST_TEMPLATE.md` exist
 
 ### Task Runner
+
 - [ ] `dotnet Build.cs help` prints the command list without errors
 - [ ] `dotnet Build.cs rename <APPNAME> TestRename` runs without errors; revert with `dotnet Build.cs rename TestRename <APPNAME>`
 
 ### Solution Filters (if created)
+
 - [ ] Each `.slnf` opens in Visual Studio / Rider without errors
 - [ ] Each `.slnf` includes all transitive `ProjectReference` dependencies
 
@@ -2012,22 +2051,22 @@ After all phases, the repository contains these files (substitute `<APPNAME>` an
 
 ## Decision Table: Common Customizations
 
-| Scenario | Change |
-|---|---|
-| No benchmarks needed | Remove `src/Benchmarks/` entirely and its `.slnx` folder entry |
-| Need WPF or WinForms | Change `APP_SDK` to `Microsoft.NET.Sdk.WindowsDesktop`; add `<UseWPF>true</UseWPF>` or `<UseWindowsForms>true</UseWindowsForms>` to app `Directory.Build.props` |
-| Multiple executables (client + server + tools) | Add more projects under `src/App/`: `<APPNAME>.Server/`, `<APPNAME>.Tools.PacketSniffer/` — each with its own `.csproj` |
-| Shared code between multiple apps | Extract into a `src/Shared/<APPNAME>.Shared/` project referenced by both apps |
-| Native interop (P/Invoke) | Add `<APPNAME>.Native/` project under the relevant layer with `NativeLibrary.Load` and runtime-specific native binaries |
-| Plugin/mod system | Add `<APPNAME>.Sdk/` project defining the plugin contract interfaces; this IS packable (`<IsPackable>true</IsPackable>`) and ships as a NuGet package for mod developers |
-| Docker deployment | Add `Dockerfile` and `docker-compose.yml` at repo root; CI builds and pushes container images instead of zip artifacts |
-| Team uses Rider | Replace `.slnx` with `.sln` via `dotnet new sln` + `dotnet sln add`. Keep solution folders by using `dotnet sln add --solution-folder`. Rider `.slnx` support is partial. |
-| Need code coverage tracking | Re-add `codecov.yml` from library guide. No additional packages are needed — TUnit already bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively. Do NOT use `coverlet.collector` — it is a VSTest data collector and [does not work with TUnit's MTP runner](https://tunit.dev/docs/extending/code-coverage/). In CI, use `dotnet test --coverage --coverage-output-format cobertura` instead of `--collect:"XPlat Code Coverage"`. **VS Code**: install [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) for inline coverage display. |
-| Multi-targeting (net8.0 + net10.0) | Change `<TargetFramework>` to `<TargetFrameworks>` in root `Directory.Build.props`; be aware this doubles build time |
-| Release versioning from CI | In CI workflow, pass `-p:Version=X.Y.Z -p:InformationalVersion=X.Y.Z+<commit-sha>` to build and publish steps |
-| Need Git commit hash in app | Add `<SourceRevisionId>$(GITHUB_SHA)</SourceRevisionId>` to root `Directory.Build.props` under a `Condition="'$(GITHUB_ACTIONS)' == 'true'"` guard. Access at runtime via `Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()`. |
-| CSharpier line width too narrow / too wide | Edit `.csharpierrc.json` `printWidth` value. 100 is CSharpier default, 120 is the scaffold default. Do not go below 80 or above 150. |
-| Want to disable CSharpier build-time check temporarily | Set `<CSharpier_Check>false</CSharpier_Check>` in a `PropertyGroup` — do NOT remove the `CSharpier.MsBuild` package. Re-enable before merging. |
+| Scenario                                               | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No benchmarks needed                                   | Remove `src/Benchmarks/` entirely and its `.slnx` folder entry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Need WPF or WinForms                                   | Change `APP_SDK` to `Microsoft.NET.Sdk.WindowsDesktop`; add `<UseWPF>true</UseWPF>` or `<UseWindowsForms>true</UseWindowsForms>` to app `Directory.Build.props`                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Multiple executables (client + server + tools)         | Add more projects under `src/App/`: `<APPNAME>.Server/`, `<APPNAME>.Tools.PacketSniffer/` — each with its own `.csproj`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Shared code between multiple apps                      | Extract into a `src/Shared/<APPNAME>.Shared/` project referenced by both apps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Native interop (P/Invoke)                              | Add `<APPNAME>.Native/` project under the relevant layer with `NativeLibrary.Load` and runtime-specific native binaries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Plugin/mod system                                      | Add `<APPNAME>.Sdk/` project defining the plugin contract interfaces; this IS packable (`<IsPackable>true</IsPackable>`) and ships as a NuGet package for mod developers                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Docker deployment                                      | Add `Dockerfile` and `docker-compose.yml` at repo root; CI builds and pushes container images instead of zip artifacts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Team uses Rider                                        | Replace `.slnx` with `.sln` via `dotnet new sln` + `dotnet sln add`. Keep solution folders by using `dotnet sln add --solution-folder`. Rider `.slnx` support is partial.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Need code coverage tracking                            | Re-add `codecov.yml` from library guide. No additional packages are needed — TUnit already bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively. Do NOT use `coverlet.collector` — it is a VSTest data collector and [does not work with TUnit's MTP runner](https://tunit.dev/docs/extending/code-coverage/). In CI, use `dotnet test --coverage --coverage-output-format cobertura` instead of `--collect:"XPlat Code Coverage"`. **VS Code**: install [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) for inline coverage display. |
+| Multi-targeting (net8.0 + net10.0)                     | Change `<TargetFramework>` to `<TargetFrameworks>` in root `Directory.Build.props`; be aware this doubles build time                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Release versioning from CI                             | In CI workflow, pass `-p:Version=X.Y.Z -p:InformationalVersion=X.Y.Z+<commit-sha>` to build and publish steps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Need Git commit hash in app                            | Add `<SourceRevisionId>$(GITHUB_SHA)</SourceRevisionId>` to root `Directory.Build.props` under a `Condition="'$(GITHUB_ACTIONS)' == 'true'"` guard. Access at runtime via `Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()`.                                                                                                                                                                                                                                                                                                                                                           |
+| CSharpier line width too narrow / too wide             | Edit `.csharpierrc.json` `printWidth` value. 100 is CSharpier default, 120 is the scaffold default. Do not go below 80 or above 150.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Want to disable CSharpier build-time check temporarily | Set `<CSharpier_Check>false</CSharpier_Check>` in a `PropertyGroup` — do NOT remove the `CSharpier.MsBuild` package. Re-enable before merging.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ---
 
