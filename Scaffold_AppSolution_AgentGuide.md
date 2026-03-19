@@ -110,6 +110,17 @@ git config user.email  # must print the real email
 
 > **Agent note**: Do not set or override `user.name`/`user.email` yourself. Flag any mismatch to the user.
 
+**Run CSharpier before the first commit.** After all source files are created but before any `git add`, install local tools and format:
+
+```shell
+dotnet tool restore          # installs CSharpier from .config/dotnet-tools.json
+dotnet csharpier format .    # format all .cs files in place
+dotnet format style          # fix naming / using-directive style
+dotnet format analyzers      # fix Roslyn analyzer violations
+```
+
+Skipping this step is the single most common cause of post-scaffold "fix formatting" commits. Format once up front and the CI `format` job passes green on the very first push.
+
 ### Recommended commit strategy
 
 ```shell
@@ -1243,7 +1254,11 @@ public class FieldIdBench
 
 ## Phase 9: `Build.cs` — Task Runner
 
-The same file-based app pattern from the library guide, but with application-specific commands:
+A single **.NET 10 file-based app** at the repo root. File-based apps require no `.csproj` — compiled and run directly via `dotnet Build.cs`.
+
+> **Hard requirement**: `Build.cs` file-based apps require the **.NET 10 SDK**. If your repository must be buildable with an older SDK only, fall back to PowerShell Core (`.ps1`) or a `Makefile` instead.
+
+Application-specific commands (no pack/nuget — replaces the library guide's bench/pack commands):
 
 ### `Build.cs` (repo root)
 
