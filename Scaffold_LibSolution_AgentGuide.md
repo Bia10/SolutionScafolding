@@ -61,7 +61,18 @@ git config --unset user.email
 
 > **Agent note**: Do not set or override `user.name`/`user.email` yourself. Verify they're correct and flag any mismatch to the user before proceeding.
 
-The first commit should happen **after Phase 1 is complete** (all root files created):
+**Run CSharpier before the first commit.** After all source files are created but before any `git add`, install local tools and format:
+
+```shell
+dotnet tool restore          # installs CSharpier from .config/dotnet-tools.json
+dotnet csharpier format .    # format all .cs files in place
+dotnet format style          # fix naming / using-directive style
+dotnet format analyzers      # fix Roslyn analyzer violations
+```
+
+Skipping this step is the single most common cause of post-scaffold "fix formatting" commits. CSharpier's Allman brace style and `dotnet format` naming rules will flag every generated file — format once up front and the CI `format` job passes green on the very first push.
+
+The first commit should happen **after Phase 1 is complete** (all root files created) **and after formatting**:
 
 ```shell
 git add -A
@@ -1603,16 +1614,16 @@ jobs:
         uses: actions/setup-dotnet@<PINNED-SHA>
         with:
           global-json-file: global.json
-      - name: NuGet login (OIDC)
-        uses: NuGet/login@<PINNED-SHA> # v1.0+ — must be SHA-pinned like all other actions
-        id: login
-        with:
-          user: ${{ secrets.NUGET_USER }}
-      - name: Push nupkg
-        run: dotnet nuget push ${{ env.NuGetDirectory }}/<LIBNAME>.${{ github.event.inputs.version }}.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-      - name: Push snupkg
-        run: dotnet nuget push ${{ env.NuGetDirectory }}/<LIBNAME>.${{ github.event.inputs.version }}.snupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+      - name: Push packages
+        shell: bash
+        run: |
+          dotnet nuget push "${{ env.NuGetDirectory }}"/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push "${{ env.NuGetDirectory }}"/*.snupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 ```
+
+> **Why glob patterns instead of explicit filenames**: Using `*.nupkg` / `*.snupkg` avoids hardcoding `<LIBNAME>.${{ github.event.inputs.version }}` in the push command. On `windows-latest` runners, glob expansion in YAML `run:` steps is PowerShell by default — PowerShell does **not** expand `*.nupkg` globs the same way bash does. Always add `shell: bash` to steps that use globs on Windows runners; without it the push command passes a literal `*.nupkg` string to the NuGet CLI and fails with "file not found".
+
+> **Why direct `NUGET_API_KEY` instead of OIDC `NuGet/login`**: The OIDC-based `NuGet/login` action adds complexity (a separate step, OIDC token exchange, an additional action to SHA-pin) and is unnecessary for straightforward pushes. A repository secret named `NUGET_API_KEY` is simpler, more widely documented, and behaves identically across GitHub-hosted and self-hosted runners.
 
 **How to get pinned SHAs**: Go to each action's GitHub release page and copy the commit SHA for the version you want. Pin to an exact 40-char SHA — not a tag. Update SHAs periodically (Dependabot will do this automatically if configured).
 
@@ -1632,7 +1643,6 @@ git ls-remote --tags https://github.com/actions/checkout | tail -1
 | `codecov/codecov-action`      | `codecov/codecov-action`      | v5.4+           | `________________________________` |
 | `actions/upload-artifact`     | `actions/upload-artifact`     | v7.0+           | `________________________________` |
 | `actions/download-artifact`   | `actions/download-artifact`   | v8.0+           | `________________________________` |
-| `NuGet/login`                 | `NuGet/login`                 | v1.0+           | `________________________________` |
 
 If the table above is empty at scaffold time, the agent **must** use version tags as a temporary fallback (e.g., `actions/checkout@v6`) and add a `TODO:` comment on each line: `# TODO: Pin to full SHA before merging to main`. The Phase 13 validation checklist will catch these.
 
@@ -1663,17 +1673,19 @@ updates:
 
 ## Phase 10: `Build.cs` — Task Runner at Repo Root
 
-Replace all individual `.ps1` scripts with a single **.NET 10 file-based app**. File-based apps require no `.csproj` — compiled and run directly via `dotnet Build.cs`. Works on Windows, Linux, and macOS with any .NET 10 SDK installation (which every developer already has).
+A single **.NET 10 file-based app** at the repo root replaces any collection of shell scripts. File-based apps require no `.csproj` — they are compiled and run directly via `dotnet Build.cs`, and work on Windows, Linux, and macOS with any .NET 10 SDK installation.
 
-### Why not PowerShell scripts?
+> **Hard requirement**: `Build.cs` file-based apps require the **.NET 10 SDK** (the feature was introduced in .NET 10). If your repository must be buildable with an older SDK (e.g., because it multi-targets `net8.0` only and your CI does not install the .NET 10 SDK), this approach is **not usable** — fall back to PowerShell Core (`.ps1`) or a `Makefile`.
 
-| Concern         | `.ps1` scripts (7 files)             | `Build.cs` (1 file)                       |
-| --------------- | ------------------------------------ | ----------------------------------------- |
-| Cross-platform  | Requires `pwsh` installed separately | Works anywhere with the .NET 10 SDK       |
-| Discoverability | 7 separate files, no unified help    | `dotnet Build.cs help` lists all commands |
-| IDE support     | Limited                              | Full IntelliSense, compile-time checks    |
-| Type safety     | Silent string-concat bugs            | Compiler catches errors                   |
-| AOT publish     | N/A                                  | `dotnet publish Build.cs` → native binary |
+### Why prefer a C# file-based app over shell scripts?
+
+| Concern         | Shell scripts (multiple files)        | `Build.cs` (1 file)                       |
+| --------------- | ------------------------------------- | ----------------------------------------- |
+| Cross-platform  | Requires `pwsh` or `bash` separately  | Works anywhere with the .NET 10 SDK       |
+| Discoverability | Scattered across the repo, no help    | `dotnet Build.cs help` lists all commands |
+| IDE support     | Limited                               | Full IntelliSense, compile-time checks    |
+| Type safety     | Silent string-concat bugs             | Compiler catches errors                   |
+| AOT publish     | N/A                                   | `dotnet publish Build.cs` → native binary |
 
 ### AOT note
 
@@ -1711,9 +1723,9 @@ Place `Build.cs` at the **repo root**, one level above all `.csproj` files. Per 
 
 ```csharp
 #!/usr/bin/env dotnet
-// Task runner — replaces bench.ps1, comparison-bench.ps1, disasm-tester.ps1,
-//               pack.ps1, publish-tester.ps1, prettier.ps1, rename.ps1
+// Task runner for the repository.
 // Usage: dotnet Build.cs <command> [args]
+// Requires: .NET 10 SDK (file-based apps are a .NET 10 feature).
 // Invoke from any directory — [CallerFilePath] locates the repo root at compile time.
 
 #:property PublishAot=false
@@ -1930,7 +1942,7 @@ After pushing the initial commit, configure these in the repository settings:
 
 1. **Branch protection on `main`**: Require CI to pass before merge
 2. **Codecov secret**: Add `CODECOV_TOKEN` to repository secrets (get from codecov.io)
-3. **NuGet secrets**: Add `NUGET_USER` to secrets for the OIDC NuGet login
+3. **NuGet secret**: Add `NUGET_API_KEY` to repository secrets (get from nuget.org → Account → API Keys)
 4. **Dependabot**: Enable for GitHub Actions (will keep action SHAs updated automatically)
 5. **CodeQL**: _Optional._ Add `.github/workflows/codeql.yml` using GitHub’s standard CodeQL starter workflow template if security scanning is desired. See the Decision Table for guidance.
 
@@ -1940,11 +1952,11 @@ After pushing the initial commit, configure these in the repository settings:
 
 Before declaring the scaffold complete, verify:
 
+- [ ] `dotnet tool restore` succeeds and `dotnet csharpier format .` + `dotnet format style` + `dotnet format analyzers` have been run locally (no pending formatting changes before the first push)
 - [ ] `dotnet build -c Debug` passes with zero warnings
 - [ ] `dotnet build -c Release` passes with zero warnings (CSharpier.MsBuild checks formatting automatically)
 - [ ] `dotnet test -c Debug` passes
 - [ ] `dotnet test -c Release` passes
-- [ ] `dotnet tool restore` succeeds (installs CSharpier)
 - [ ] `dotnet csharpier check .` passes (opinionated formatting)
 - [ ] `dotnet format style --verify-no-changes` passes (naming/style diagnostics)
 - [ ] `dotnet format analyzers --verify-no-changes` passes (Roslyn analyzers)
@@ -2060,7 +2072,7 @@ After all phases are complete, the repository contains exactly these files (subs
 1. **Do not use floating action tags** (`@v2`, `@main`). Always SHA-pin. Tags can be moved by maintainers.
 2. **Do not skip the XyzTest/ReadMeTest pattern** just because it's "just a scaffold". The moment you skip it, documentation drift starts, and it never gets added back.
 3. **Do not add multi-targeting unless the user explicitly requires it**. It doubles the build matrix and requires `#if` guards everywhere.
-4. **Do not copy paste `ReaderSpec.cs` or domain-specific helpers from Sep** into a non-CSV library. The Sep template carries CSV-reading abstractions that are irrelevant in other domains.
+4. **Do not copy-paste domain-specific helpers from any reference project** into a new library. Every reference project carries domain-specific abstractions that are irrelevant in a different domain — design for your domain from scratch.
 5. **Do not omit `fetch-depth: 0`** in the `pack` CI job. MinVer requires full git history to compute semantic versions from tag distance. Without it, every package is `0.0.0-preview.1`.
 6. **Do not omit `<EmbedUntrackedSources>true</EmbedUntrackedSources>`**. Source Link requires this to allow debuggers to step into NuGet packages.
 7. **Do not omit the `format` CI job**. Without it, formatting diverges silently across PRs until it becomes a big conflict.
