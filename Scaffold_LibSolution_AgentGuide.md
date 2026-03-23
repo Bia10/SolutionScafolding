@@ -1781,14 +1781,14 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@<PINNED-SHA> # vX.Y.Z
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@<PINNED-SHA> # vX.Y.Z
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@<PINNED-SHA> # vX.Y.Z
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
         with:
           global-json-file: global.json
 
@@ -1803,7 +1803,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: matrix.configuration == 'Release' # Upload only once per OS to avoid duplicate reports
-        uses: codecov/codecov-action@<PINNED-SHA> # vX.Y.Z
+        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
         with:
           flags: ${{ matrix.os }}
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -1812,12 +1812,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@<PINNED-SHA> # vX.Y.Z
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@<PINNED-SHA>
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Setup .NET
-        uses: actions/setup-dotnet@<PINNED-SHA>
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
         with:
           global-json-file: global.json
       - name: Restore tools
@@ -1833,22 +1833,22 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@<PINNED-SHA>
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@<PINNED-SHA>
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0 # full history for MinVer
       - name: Create tag (to set version)
         if: ${{ github.event.inputs.version != '' && github.actor == '<AUTHOR>' }}
         run: git tag v${{ github.event.inputs.version }}
       - name: Setup .NET
-        uses: actions/setup-dotnet@<PINNED-SHA>
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
         with:
           global-json-file: global.json
       - name: Pack NuGet package
         run: dotnet pack -c Release --output ${{ env.NuGetDirectory }}
-      - uses: actions/upload-artifact@<PINNED-SHA>
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: nuget
           if-no-files-found: error
@@ -1865,17 +1865,17 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@<PINNED-SHA>
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@<PINNED-SHA>
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Download nuget packages
-        uses: actions/download-artifact@<PINNED-SHA>
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: nuget
           path: ${{ env.NuGetDirectory }}
       - name: Setup .NET
-        uses: actions/setup-dotnet@<PINNED-SHA>
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
         with:
           global-json-file: global.json
       - name: Push packages
@@ -1894,19 +1894,20 @@ jobs:
 **Agent note — resolving `<PINNED-SHA>` placeholders**: AI agents cannot browse GitHub at scaffold time. Before scaffolding, the user (or a setup script) must populate the SHA lookup table below. Run the helper command for each action to get the current commit hash:
 
 ```shell
-# Example: resolve actions/checkout latest release SHA
-git ls-remote --tags https://github.com/actions/checkout | tail -1
+# Resolve SHA for a specific tag (e.g. actions/checkout v6):
+git ls-remote --tags https://github.com/actions/checkout | grep "refs/tags/v6$"
+# Use the SHA from the tag ref directly — do NOT use ^{} dereference entries.
 # Or visit: https://github.com/actions/checkout/releases → copy commit SHA
 ```
 
-| Placeholder in workflow       | Action                        | Minimum version | SHA (fill before scaffolding)      |
-| ----------------------------- | ----------------------------- | --------------- | ---------------------------------- |
-| `step-security/harden-runner` | `step-security/harden-runner` | v2.13+          | `________________________________` |
-| `actions/checkout`            | `actions/checkout`            | v6.0+           | `________________________________` |
-| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5.0+           | `________________________________` |
-| `codecov/codecov-action`      | `codecov/codecov-action`      | v5.4+           | `________________________________` |
-| `actions/upload-artifact`     | `actions/upload-artifact`     | v7.0+           | `________________________________` |
-| `actions/download-artifact`   | `actions/download-artifact`   | v8.0+           | `________________________________` |
+| Placeholder in workflow       | Action                        | Pinned version | SHA                                        | Last verified |
+| ----------------------------- | ----------------------------- | -------------- | ------------------------------------------ | ------------- |
+| `step-security/harden-runner` | `step-security/harden-runner` | v2.16.0        | `fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594` | 2026-03-23    |
+| `actions/checkout`            | `actions/checkout`            | v6             | `de0fac2e4500dabe0009e67214ff5f5447ce83dd` | 2026-03-23    |
+| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5             | `c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7` | 2026-03-23    |
+| `codecov/codecov-action`      | `codecov/codecov-action`      | v5.5.3         | `1af58845a975a7985b0beb0cbe6fbbb71a41dbad` | 2026-03-23    |
+| `actions/upload-artifact`     | `actions/upload-artifact`     | v7             | `bbbca2ddaa5d8feaa63e36b76fdaad77386f024f` | 2026-03-23    |
+| `actions/download-artifact`   | `actions/download-artifact`   | v8             | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-03-23    |
 
 If the table above is empty at scaffold time, the agent **must** use version tags as a temporary fallback (e.g., `actions/checkout@v6`) and add a `TODO:` comment on each line: `# TODO: Pin to full SHA before merging to main`. The Phase 13 validation checklist will catch these.
 
