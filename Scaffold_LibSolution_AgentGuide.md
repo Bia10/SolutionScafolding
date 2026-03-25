@@ -367,7 +367,7 @@ coverage:
 <Solution>
   <Project Path="src/<LIBNAME>/<LIBNAME>.csproj" />
   <Project Path="src/<LIBNAME>.Test/<LIBNAME>.Test.csproj" />
-  <Project Path="src/<LIBNAME>.XyzTest/<LIBNAME>.XyzTest.csproj" />
+  <Project Path="src/<LIBNAME>.DocTest/<LIBNAME>.DocTest.csproj" />
   <Project Path="src/<LIBNAME>.Benchmarks/<LIBNAME>.Benchmarks.csproj" />
   <Project Path="src/<LIBNAME>.ComparisonBenchmarks/<LIBNAME>.ComparisonBenchmarks.csproj" />
   <Project Path="src/<LIBNAME>.Tester/<LIBNAME>.Tester.csproj" />
@@ -638,7 +638,7 @@ Place a **128×128 PNG** at the repo root named `Icon.png`. This file is **requi
 
 ⭐ Please star this project if you like it. ⭐
 
-[Example](#example) | [Example Catalogue](#example-catalogue) | [Public API Reference](#public-api-reference)
+[Example](#example) | [Example Catalogue](#example-catalogue) | [Public API](docs/PublicApi.md)
 
 ## Example
 
@@ -663,7 +663,7 @@ Benchmarks.
 
 ## Example Catalogue
 
-The following examples are available in [ReadMeTest.cs](src/<LIBNAME>.XyzTest/ReadMeTest.cs).
+The following examples are available in [ReadMeTest.cs](src/<LIBNAME>.DocTest/ReadMeTest.cs).
 
 ### Example - Empty
 
@@ -673,13 +673,34 @@ The following examples are available in [ReadMeTest.cs](src/<LIBNAME>.XyzTest/Re
 
 ## Public API Reference
 
+See [docs/PublicApi.md](docs/PublicApi.md) for the complete auto-generated public API reference.
+
+> **Note**: `docs/PublicApi.md` is auto-updated by the `ReadMeTest_PublicApi` test on every `dotnet test` run. Do not edit it manually.
+
+```
+
+**Critical**: The section header `## Public API Reference` in `docs/PublicApi.md` must be **exactly** the string referenced in `ReadMeTest.cs`. The benchmark and example section headers in `README.md` are also a contract. Never rename them without updating both files simultaneously.
+
+> **Why a separate file?** For libraries with large public surfaces (hundreds of types), the inline API block can make the README tens of thousands of lines long, which slows down GitHub's repository page render significantly. Keeping it in `docs/PublicApi.md` keeps the README short and fast to load while the full API is still discoverable one click away.
+
+---
+
+### 1.20 `docs/PublicApi.md`
+
+Create this file at `docs/PublicApi.md`. The `ReadMeTest_PublicApi` test writes the auto-generated public API here instead of inline in the README.
+
+````markdown
+# Public API Reference
+
+## Public API Reference
+
 ```csharp
-// Public API will be auto-populated by ReadMeTest_PublicApi test
 ```
+````
 
-```
+**Why a separate file**: For libraries with large public surfaces (many types/enums) the inline API block can exceed tens of thousands of lines, making GitHub's repository page slow to render. Keeping it in `docs/PublicApi.md` keeps README short and fast while the full API is still one click away.
 
-**Critical**: The README section headers must be **exactly** the strings referenced in `ReadMeTest.cs`. They form a contract between the test code and the document. Never rename them without updating both files simultaneously.
+**Note**: The `## Public API Reference` heading inside this file is the anchor used by `ReadMeTest_PublicApi` to locate the code block to replace. Do not remove or rename it.
 
 ---
 
@@ -693,7 +714,7 @@ Directory.Build.targets ← shared build targets (usually minimal)
 Directory.Packages.props ← Central Package Management (all package versions)
 <LIBNAME>/ ← THE LIBRARY
 <LIBNAME>.Test/ ← unit tests
-<LIBNAME>.XyzTest/ ← integration + README sync tests
+<LIBNAME>.DocTest/ ← documentation sync tests (README examples + public API snapshot)
 <LIBNAME>.Benchmarks/ ← BDN perf benchmarks
 <LIBNAME>.ComparisonBenchmarks/ ← BDN comparison vs. alternatives
 <LIBNAME>.Tester/ ← console app for manual testing
@@ -905,7 +926,7 @@ All NuGet package versions are managed centrally in this file. Individual `.cspr
       <_Parameter1>$(MSBuildProjectName).Test</_Parameter1>
     </AssemblyAttribute>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
-      <_Parameter1>$(MSBuildProjectName).XyzTest</_Parameter1>
+      <_Parameter1>$(MSBuildProjectName).DocTest</_Parameter1>
     </AssemblyAttribute>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>$(MSBuildProjectName).Benchmarks</_Parameter1>
@@ -1084,17 +1105,16 @@ Add to the library `.csproj` (Phase 4.1) `<ItemGroup>` section:
 </Project>
 ```
 
-> ⚠️ **Code coverage with TUnit**: The `TUnit` meta package **already includes `Microsoft.Testing.Extensions.CodeCoverage` transitively** — no additional coverage package is needed. Do NOT add `coverlet.collector` or `coverlet.msbuild` — these are VSTest data collectors and are [not compatible with TUnit's MTP runner](https://tunit.dev/docs/extending/code-coverage/). Coverage is collected via the `--coverage` flag:
+> ⚠️ **Code coverage with TUnit**: The `TUnit` meta package **already includes `Microsoft.Testing.Extensions.CodeCoverage` transitively** — no additional coverage package is needed. Do NOT add `coverlet.collector` or `coverlet.msbuild` — these are VSTest data collectors and are [not compatible with TUnit's MTP runner](https://tunit.dev/docs/extending/code-coverage/). Coverage locally:
 >
 > ```shell
-> # Collect coverage (cobertura XML for CI tools like Codecov):
+> # Collect coverage locally (cobertura XML for CI tools like Codecov):
 > dotnet test --coverage --coverage-output-format cobertura
->
-> # Multiple formats in one run:
-> dotnet test --coverage --coverage-output-format cobertura --coverage-output-format xml
 > ```
 >
-> **Viewing coverage results**:
+> ⚠️ **CI caveat**: `dotnet test --coverage` is unreliable on CI for TUnit/MTP projects because the output path is indeterminate and hard to locate via glob. The CI workflow uses a dedicated `coverage` job with `dotnet-coverage collect` (see Phase 9.1) which writes to a known path. Do not attempt to replicate the `--coverage` approach in the CI `build-and-test` matrix job.
+>
+> **Viewing coverage results locally**:
 >
 > - **Visual Studio** — Built-in coverage viewer (Enterprise/Community 2026+)
 > - **VS Code** — Install the [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) extension, then open the generated `coverage.cobertura.xml` to see inline coverage highlighting
@@ -1120,14 +1140,14 @@ public class <RootClass>Test
 
 **Why**: Mirrors the `Empty()` philosophy — this test proves the test runner, the project reference, and the library all link and execute. Delete it when real tests are added.
 
-### 5.2 `src/<LIBNAME>.XyzTest/<LIBNAME>.XyzTest.csproj`
+### 5.2 `src/<LIBNAME>.DocTest/<LIBNAME>.DocTest.csproj`
 
-> **Naming note**: `XyzTest` is the `nietras` convention for “everything that isn’t a pure unit test” — README sync tests, public API snapshot validation, integration tests. If your team prefers a clearer name (`IntegrationTest`, `E2ETest`), rename it consistently across the `.slnx`, the `InternalsVisibleTo` attributes in the library `.csproj`, and all `ProjectReference` entries.
+> **Naming note**: `DocTest` is the scaffold convention for “everything that isn’t a pure unit test” — README example sync, public API snapshot validation, and other integration-level tests. The name reflects the project’s primary job: keeping the documentation (README examples and `docs/PublicApi.md`) in sync with the code. Rename consistently across the `.slnx`, the `InternalsVisibleTo` attributes in the library `.csproj`, and all `ProjectReference` entries if you prefer a different convention (e.g., `IntegrationTest`, `E2ETest`).
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <RootNamespace><ROOTNS>.XyzTest</RootNamespace>
+    <RootNamespace><ROOTNS>.DocTest</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
     <NoWarn>$(NoWarn);CA2007</NoWarn>
@@ -1144,14 +1164,14 @@ public class <RootClass>Test
 </Project>
 ```
 
-**Note**: `XyzTest` is NOT excluded from coverage at the assembly level — individual test classes that do infrastructure work (ReadMeTest) should be decorated with `[ExcludeFromCodeCoverage]` directly.
+**Note**: `DocTest` is NOT excluded from coverage at the assembly level — individual test classes that do infrastructure work (ReadMeTest) should be decorated with `[ExcludeFromCodeCoverage]` directly.
 
-### 5.3 `src/<LIBNAME>.XyzTest/AssemblyInitializeCultureTest.cs`
+### 5.3 `src/<LIBNAME>.DocTest/AssemblyInitializeCultureTest.cs`
 
 ```csharp
 using System.Globalization;
 
-namespace <ROOTNS>.XyzTest;
+namespace <ROOTNS>.DocTest;
 
 public static class AssemblyInitializeCultureTest
 {
@@ -1271,7 +1291,7 @@ The `ReadMeTest.cs` pattern enforces three guarantees via CI:
 2. **Benchmark tables are always current** — they are auto-embedded from BDN output files
 3. **Public API in README always matches the compiled assembly** — generated by reflection
 
-### 6.2 `src/<LIBNAME>.XyzTest/ReadMeTest.cs`
+### 6.2 `src/<LIBNAME>.DocTest/ReadMeTest.cs`
 
 ````csharp
 #pragma warning disable CA2007 // ConfigureAwait
@@ -1285,14 +1305,14 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using PublicApiGenerator;
 
-namespace <ROOTNS>.XyzTest;
+namespace <ROOTNS>.DocTest;
 
 [NotInParallel]
 [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
 public partial class ReadMeTest
 {
     static readonly string s_testSourceFilePath = SourceFile();
-    // Navigate from src/<LIBNAME>.XyzTest/ up to repo root (2 levels: XyzTest → src → root)
+    // Navigate from src/<LIBNAME>.DocTest/ up to repo root (2 levels: DocTest → src → root)
     static readonly string s_rootDirectory =
         Path.GetFullPath(Path.Combine(Path.GetDirectoryName(s_testSourceFilePath)!, "..", ".."))
         + Path.DirectorySeparatorChar;
@@ -1380,6 +1400,8 @@ public partial class ReadMeTest
                 all += $"{section}{Environment.NewLine}{Environment.NewLine}{benchmarkTable}{Environment.NewLine}";
             }
 
+            if (all.Length == 0) { continue; } // no benchmark data yet — skip embedding this entry
+
             readmeLines = ReplaceReadmeLines(readmeLines, [all],
                 config.ReadmeBefore, config.SectionPrefix, 0, config.ReadmeEnd, 0);
         }
@@ -1393,15 +1415,18 @@ public partial class ReadMeTest
 #endif
     public void ReadMeTest_PublicApi()
     {
-        if (!File.Exists(s_readmeFilePath)) { return; }
+        // Public API is written to docs/PublicApi.md (not README) to keep the README short.
+        // For large libraries the inline API block can run to tens of thousands of lines.
+        var publicApiFilePath = Path.Combine(s_rootDirectory, "docs", "PublicApi.md");
+        if (!File.Exists(publicApiFilePath)) { return; }
 
         // REPLACE <RootClass> with your actual root type
         var publicApi = typeof(<RootClass>).Assembly.GeneratePublicApi();
-        var readmeLines = File.ReadAllLines(s_readmeFilePath);
-        readmeLines = ReplaceReadmeLines(readmeLines, [publicApi],
+        var apiLines = File.ReadAllLines(publicApiFilePath);
+        apiLines = ReplaceReadmeLines(apiLines, [publicApi],
             "## Public API Reference", "```csharp", 1, "```", 0);
-        var newReadme = string.Join(Environment.NewLine, readmeLines) + Environment.NewLine;
-        File.WriteAllText(s_readmeFilePath, newReadme, System.Text.Encoding.UTF8);
+        var newContent = string.Join(Environment.NewLine, apiLines) + Environment.NewLine;
+        File.WriteAllText(publicApiFilePath, newContent, System.Text.Encoding.UTF8);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1799,13 +1824,41 @@ jobs:
         run: dotnet build -c ${{ matrix.configuration }} --no-restore
 
       - name: Test
-        run: dotnet test -c ${{ matrix.configuration }} --no-build --verbosity normal --coverage --coverage-output-format cobertura
+        run: dotnet test -c ${{ matrix.configuration }} --no-build --verbosity normal
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup .NET (global.json)
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Install dotnet-coverage
+        run: dotnet tool install --global dotnet-coverage
+
+      - name: Collect coverage
+        run: |
+          dotnet-coverage collect --output TestResults/coverage.test.xml --output-format cobertura -- dotnet run --project src/<LIBNAME>.Test/<LIBNAME>.Test.csproj -c Release --no-build -- --no-ansi
+          dotnet-coverage collect --output TestResults/coverage.doctest.xml --output-format cobertura -- dotnet run --project src/<LIBNAME>.DocTest/<LIBNAME>.DocTest.csproj -c Release --no-build -- --no-ansi
 
       - name: Upload coverage to Codecov
-        if: matrix.configuration == 'Release' # Upload only once per OS to avoid duplicate reports
         uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
         with:
-          flags: ${{ matrix.os }}
+          files: TestResults/coverage.test.xml,TestResults/coverage.doctest.xml
           token: ${{ secrets.CODECOV_TOKEN }}
 
   format:
@@ -1856,7 +1909,7 @@ jobs:
           path: ${{ env.NuGetDirectory }}/*nupkg
 
   create-release-push:
-    needs: [build-and-test, format, pack]
+    needs: [build-and-test, format, coverage, pack]
     runs-on: windows-latest
     permissions:
       contents: write
@@ -1888,6 +1941,8 @@ jobs:
 > **Why glob patterns instead of explicit filenames**: Using `*.nupkg` / `*.snupkg` avoids hardcoding `<LIBNAME>.${{ github.event.inputs.version }}` in the push command. On `windows-latest` runners, glob expansion in YAML `run:` steps is PowerShell by default — PowerShell does **not** expand `*.nupkg` globs the same way bash does. Always add `shell: bash` to steps that use globs on Windows runners; without it the push command passes a literal `*.nupkg` string to the NuGet CLI and fails with "file not found".
 
 > **Why direct `NUGET_API_KEY` instead of OIDC `NuGet/login`**: The OIDC-based `NuGet/login` action adds complexity (a separate step, OIDC token exchange, an additional action to SHA-pin) and is unnecessary for straightforward pushes. A repository secret named `NUGET_API_KEY` is simpler, more widely documented, and behaves identically across GitHub-hosted and self-hosted runners.
+
+> **Why `dotnet-coverage collect` instead of `dotnet test --coverage`**: TUnit uses `Microsoft.Testing.Platform` (MTP) as its test runner. While `dotnet test` works for running tests (when `<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>` is set), passing `--coverage` through `dotnet test` to the MTP runner is unreliable on CI — the coverage output ends up in an indeterminate path inside `artifacts/TestResults/` that the Codecov action cannot reliably locate. The `dotnet-coverage collect` CLI tool wraps the test process directly, outputs Cobertura XML to a known path (`TestResults/`), and the Codecov upload references those files explicitly. This is the recommended pattern for TUnit + MTP projects.
 
 **How to get pinned SHAs**: Go to each action's GitHub release page and copy the commit SHA for the version you want. Pin to an exact 40-char SHA — not a tag. Update SHAs periodically (Dependabot will do this automatically if configured).
 
@@ -2230,7 +2285,7 @@ Before declaring the scaffold complete, verify:
 - [ ] `dotnet Build.cs format check` passes (runs CSharpier + dotnet format style + analyzers)
 - [ ] `dotnet pack` produces a `.nupkg` and `.snupkg`
 - [ ] README contains the `Empty()` method body under `## Example`
-- [ ] README contains the public API snippet under `## Public API Reference`
+- [ ] `docs/PublicApi.md` exists and contains the public API snippet under `## Public API Reference` (auto-updated by `dotnet test`)
 - [ ] The benchmark result row in README shows `0.0004 ns` or similar (confirms BDN baseline was run)
 - [ ] Pre-commit hooks are installed and `gitleaks` does not fire _(skip if Python/pre-commit unavailable — see Phase 1.8 prerequisite)_
 - [ ] All action SHAs in `.github/workflows/dotnet.yml` are 40-char hashes, not version tags (or have `# TODO: Pin to full SHA` comments if lookup table was empty)
@@ -2279,8 +2334,8 @@ After all phases are complete, the repository contains exactly these files (subs
 │   ├── <LIBNAME>.Test/
 │   │   ├── <LIBNAME>.Test.csproj
 │   │   └── <RootClass>Test.cs
-│   ├── <LIBNAME>.XyzTest/
-│   │   ├── <LIBNAME>.XyzTest.csproj
+│   ├── <LIBNAME>.DocTest/
+│   │   ├── <LIBNAME>.DocTest.csproj
 │   │   ├── AssemblyInitializeCultureTest.cs
 │   │   └── ReadMeTest.cs
 │   ├── <LIBNAME>.Benchmarks/
@@ -2307,6 +2362,8 @@ After all phases are complete, the repository contains exactly these files (subs
 ├── .gitattributes
 ├── .gitignore
 ├── .jscpd.json
+├── docs/
+│   └── PublicApi.md
 ├── .markdownlint.json
 ├── .pre-commit-config.yaml
 ├── Build.cs
@@ -2322,7 +2379,7 @@ After all phases are complete, the repository contains exactly these files (subs
 └── <LIBNAME>.slnx
 ```
 
-**Total**: 37 files across 13 directories (or 42 files across 15 directories if `NEEDS_GENERATOR=true`). Phase 11b adds `benchmarks/<MachineName>/TestBench.md` and `benchmarks/<MachineName>/Versions.txt`.
+**Total**: 38 files across 14 directories (or 43 files across 16 directories if `NEEDS_GENERATOR=true`). Phase 11b adds `benchmarks/<MachineName>/TestBench.md` and `benchmarks/<MachineName>/Versions.txt`.
 
 ---
 
@@ -2350,7 +2407,7 @@ After all phases are complete, the repository contains exactly these files (subs
 ## Anti-Patterns to Avoid
 
 1. **Do not use floating action tags** (`@v2`, `@main`). Always SHA-pin. Tags can be moved by maintainers.
-2. **Do not skip the XyzTest/ReadMeTest pattern** just because it's "just a scaffold". The moment you skip it, documentation drift starts, and it never gets added back.
+2. **Do not skip the DocTest/ReadMeTest pattern** just because it's "just a scaffold". The moment you skip it, documentation drift starts, and it never gets added back.
 3. **Do not add multi-targeting unless the user explicitly requires it**. It doubles the build matrix and requires `#if` guards everywhere.
 4. **Do not copy-paste domain-specific helpers from any reference project** into a new library. Every reference project carries domain-specific abstractions that are irrelevant in a different domain — design for your domain from scratch.
 5. **Do not omit `fetch-depth: 0`** in the `pack` CI job. MinVer requires full git history to compute semantic versions from tag distance. Without it, every package is `0.0.0-preview.1`.
