@@ -1856,7 +1856,7 @@ jobs:
           dotnet-coverage collect --output TestResults/coverage.doctest.xml --output-format cobertura -- dotnet run --project src/<LIBNAME>.DocTest/<LIBNAME>.DocTest.csproj -c Release --no-build -- --no-ansi
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           files: TestResults/coverage.test.xml,TestResults/coverage.doctest.xml
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -1960,7 +1960,7 @@ git ls-remote --tags https://github.com/actions/checkout | grep "refs/tags/v6$"
 | `step-security/harden-runner` | `step-security/harden-runner` | v2.16.0        | `fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594` | 2026-03-23    |
 | `actions/checkout`            | `actions/checkout`            | v6             | `de0fac2e4500dabe0009e67214ff5f5447ce83dd` | 2026-03-23    |
 | `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5             | `c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7` | 2026-03-23    |
-| `codecov/codecov-action`      | `codecov/codecov-action`      | v5.5.3         | `1af58845a975a7985b0beb0cbe6fbbb71a41dbad` | 2026-03-23    |
+| `codecov/codecov-action`      | `codecov/codecov-action`      | v6.0.0         | `57e3a136b779b570ffcdbf80b3bdc90e7fab3de2` | 2026-03-27    |
 | `actions/upload-artifact`     | `actions/upload-artifact`     | v7             | `bbbca2ddaa5d8feaa63e36b76fdaad77386f024f` | 2026-03-23    |
 | `actions/download-artifact`   | `actions/download-artifact`   | v8             | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-03-23    |
 
