@@ -1,7 +1,7 @@
 # Agent Guide: Creating a "nietras-quality" Large .NET Application Solution
 
-> **Purpose**: Step-by-step instructions for an AI agent to scaffold a large .NET application solution (game client, desktop app, tool suite) with ~100 library projects and an executable entry point — matching the engineering rigor of the [Library Scaffold Guide](NietrasScaffold_LibSolution_AgentGuide.md) but adapted for application-scale architecture.
-> **Companion to**: `NietrasScaffold_LibSolution_AgentGuide.md` (library-focused). This guide references that document for shared root-config patterns and avoids duplicating them.
+> **Purpose**: Step-by-step instructions for an AI agent to scaffold a large .NET application solution (console app, desktop tool, local service, agent orchestration host) with many internal library projects and an executable entry point — matching the engineering rigor of the [Library Scaffold Guide](Scaffold_LibSolution_AgentGuide.md) but adapted for application-scale architecture.
+> **Companion to**: `Scaffold_LibSolution_AgentGuide.md` (library-focused). This guide references that document for shared root-config patterns and avoids duplicating them.
 > **Inputs required from user before starting**: application name, domain layers, target platforms, whether native interop is needed.
 > **Output**: a complete, CI-ready, publishable application repository scaffold with layered architecture and zero-tolerance code quality from commit one.
 
@@ -9,7 +9,7 @@
 
 ## How This Guide Relates to the Library Guide
 
-The [Library Scaffold Guide](NietrasScaffold_LibSolution_AgentGuide.md) targets a **single NuGet library** (or a small set of related libraries) with satellite test/benchmark projects (~6 projects, 36 files). This guide targets a **large application** with many internal libraries — the kind of solution where you open Visual Studio and see 100+ projects.
+The [Library Scaffold Guide](Scaffold_LibSolution_AgentGuide.md) targets a **single NuGet library** (or a small set of related libraries) with satellite test/benchmark projects (~6 projects, 36 files). This guide targets a **large application** with many internal libraries — the kind of solution where you open Visual Studio and see 15–100+ projects.
 
 **Reused verbatim** from the library guide (read those sections there — not duplicated here):
 
@@ -53,39 +53,43 @@ The [Library Scaffold Guide](NietrasScaffold_LibSolution_AgentGuide.md) targets 
 
 Ask the user for (or infer from context):
 
-| Variable           | Example                                       | Notes                                                                                     |
-| ------------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `APPNAME`          | `Edelstein`                                   | PascalCase; becomes solution name and exe name                                            |
-| `ROOTNS`           | `Edelstein`                                   | Root namespace prefix; all projects use `<ROOTNS>.<Layer>.<Module>`                       |
-| `DESCRIPTION`      | `MapleStory v95 game client reimplementation` | One sentence for README                                                                   |
-| `AUTHOR`           | `yourname`                                    | GitHub username                                                                           |
-| `DOTNET_VERSION`   | `net10.0`                                     | Target framework for all projects                                                         |
-| `CSHARP_VERSION`   | `14.0`                                        | Match to chosen .NET version                                                              |
-| `SDK_VERSION`      | `10.0.103`                                    | Exact SDK version from `dotnet --version`                                                 |
-| `GITHUB_URL`       | `https://github.com/you/APPNAME`              | Full repo URL                                                                             |
-| `LICENSE`          | `MIT`                                         | License type                                                                              |
-| `YEAR`             | `2026`                                        | Copyright year                                                                            |
-| `COMPANY`          | `yourname`                                    | Used in copyright                                                                         |
-| `TARGET_PLATFORMS` | `win-x64`                                     | Semicolon-separated RIDs for publish: `win-x64;linux-x64`                                 |
-| `NEEDS_UNSAFE`     | `true`                                        | true for P/Invoke, bit manipulation, SIMD, packet manipulation                            |
-| `NEEDS_NATIVE`     | `true`                                        | true if shipping native `.dll`/`.so` alongside the exe                                    |
-| `APP_SDK`          | `Microsoft.NET.Sdk`                           | SDK for the app project. Use `Microsoft.NET.Sdk` for console, or custom for windowed apps |
-| `DOMAIN_LAYERS`    | (see Phase 2)                                 | Ordered list of domain layer folders and their purpose                                    |
+| Variable           | Example                                                       | Notes                                                                                     |
+| ------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `APPNAME`          | `MyApp`                                                       | PascalCase; becomes solution name and exe name                                            |
+| `ROOTNS`           | `MyApp`                                                       | Root namespace prefix; all projects use `<ROOTNS>.<Layer>.<Module>`                       |
+| `DESCRIPTION`      | `A local service host for multi-step workflow orchestration.` | One sentence for README                                                                   |
+| `AUTHOR`           | `yourname`                                                    | GitHub username                                                                           |
+| `DOTNET_VERSION`   | `net10.0`                                                     | Target framework for all projects                                                         |
+| `CSHARP_VERSION`   | `14.0`                                                        | Match to chosen .NET version                                                              |
+| `SDK_VERSION`      | `10.0.103`                                                    | Exact SDK version from `dotnet --version`                                                 |
+| `GITHUB_URL`       | `https://github.com/you/APPNAME`                              | Full repo URL                                                                             |
+| `LICENSE`          | `MIT`                                                         | License type                                                                              |
+| `YEAR`             | `2026`                                                        | Copyright year                                                                            |
+| `COMPANY`          | `yourname`                                                    | Used in copyright                                                                         |
+| `TARGET_PLATFORMS` | `win-x64`                                                     | Semicolon-separated RIDs for publish: `win-x64;linux-x64`                                 |
+| `NEEDS_UNSAFE`     | `false`                                                       | true for P/Invoke, SIMD, bit manipulation, or interop-heavy code                          |
+| `NEEDS_NATIVE`     | `false`                                                       | true if shipping native `.dll`/`.so` alongside the exe                                    |
+| `APP_SDK`          | `Microsoft.NET.Sdk`                                           | SDK for the app project. Use `Microsoft.NET.Sdk` for console, or custom for windowed apps |
+| `DOMAIN_LAYERS`    | (see Phase 2)                                                 | Ordered list of domain layer folders and their purpose                                    |
 
 ### Domain Layer Interview
 
-The most important input is the **domain layer breakdown**. Ask the user to describe the major subsystems of their application. For a game client, a typical breakdown is:
+The most important input is the **domain layer breakdown**. Ask the user to describe the major subsystems of their application. A typical breakdown for a local service or tool is:
 
 ```
-Core        → Primitives, math, collections, memory utilities
-Data        → Asset loading, data templates, string tables
-Crypto      → CRC, encryption, packet cipher
-Network     → Packet I/O, connection management, protocol types
-Game        → Game logic: combat, inventory, quests, field management
-Rendering   → Graphics backend, sprites, animation, compositing
-UI          → UI framework, windows, controls, text rendering
-Audio       → Sound effects, background music
-App         → The executable entry point, startup orchestration
+Core            → Primitives, value types, shared utilities, math helpers
+Config          → Settings loading, validation, environment abstraction
+Domain          → Domain types, domain services, business rules (no external I/O)
+Infrastructure  → External integrations: HTTP clients, file system, databases, message brokers
+Application     → Use-case orchestration, application services, command/query handlers
+App             → Executable entry point, DI composition root, startup orchestration
+```
+
+For a desktop app or agent orchestration host, extend with:
+
+```
+Agents          → Agent definitions, orchestration logic, tool registrations
+CLI / UI        → Console interface, argument parsing, or Avalonia/WinForms/WPF components
 ```
 
 The user may add, remove, or rename layers. Record the final list as `DOMAIN_LAYERS` — it drives the entire directory structure.
@@ -226,20 +230,16 @@ Not required (no NuGet package). If the application has a window icon or tray ic
 <DESCRIPTION>
 
 ## Architecture
+
 ```
-
 src/
-├── Core/ Primitives, math, collections, memory
-├── Data/ Asset loading, templates, string tables
-├── Crypto/ CRC, encryption, packet cipher
-├── Network/ Protocol I/O, connection management
-├── Game/ Game logic: combat, inventory, quests
-├── Rendering/ Graphics, sprites, animation
-├── UI/ UI framework, windows, controls
-├── Audio/ Sound effects, BGM
-└── App/ Executable entry point
-
-````
+├── Core/           Primitives, value types, shared utilities
+├── Config/         Settings loading, environment abstraction
+├── Domain/         Business rules, domain services
+├── Infrastructure/ External integrations (HTTP, files, databases)
+├── Application/    Use-case orchestration, command/query handlers
+└── App/            Executable entry point, DI composition root
+```
 
 See [Solution Structure](#solution-structure) for the full project breakdown.
 
@@ -253,7 +253,7 @@ See [Solution Structure](#solution-structure) for the full project breakdown.
 
 ```shell
 dotnet tool restore   # Install local tools (CSharpier formatter)
-````
+```
 
 ### Build
 
@@ -283,17 +283,14 @@ dotnet Build.cs publish win-x64
 
 ## Solution Structure
 
-| Layer       | Projects                        | Depends On          |
-| ----------- | ------------------------------- | ------------------- |
-| `Core`      | Primitives, math, collections   | (none — leaf layer) |
-| `Data`      | Asset loading, templates        | Core                |
-| `Crypto`    | CRC, cipher                     | Core                |
-| `Network`   | Packets, connection             | Core, Crypto        |
-| `Game`      | Combat, inventory, quest, field | Core, Data, Network |
-| `Rendering` | Graphics, sprites, animation    | Core, Data          |
-| `UI`        | Windows, controls, text         | Core, Rendering     |
-| `Audio`     | SFX, BGM                        | Core, Data          |
-| `App`       | Entry point                     | All layers          |
+| Layer            | Projects                                    | Depends On           |
+| ---------------- | ------------------------------------------- | -------------------- |
+| `Core`           | Primitives, value types, utilities          | (none — leaf layer)  |
+| `Config`         | Settings loading, validation                | Core                 |
+| `Domain`         | Domain types, business rules, services      | Core                 |
+| `Infrastructure` | HTTP clients, file system, persistence      | Core, Domain         |
+| `Application`    | Use-case handlers, orchestration            | Core, Domain, Infra  |
+| `App`            | Entry point, DI root, startup               | All layers           |
 
 ## Development
 
@@ -312,7 +309,7 @@ dotnet Build.cs help
 
 ### Code Formatting
 
-This project uses **CSharpier** (opinionated C# formatter) and **`dotnet format`** (code style analyzers):
+This project uses **CSharpier** (opinionated C# formatter) and **`dotnet format`** (code style and Roslyn analyzers):
 
 ```shell
 # Auto-format everything:
@@ -328,18 +325,16 @@ IDE integration: Install the CSharpier extension for [VS Code](https://marketpla
 
 To load a subset of the solution in your IDE:
 
-- `Core.slnf` — Core libraries + their tests only
-- `Network.slnf` — Network + Crypto + Core + tests
-- `Game.slnf` — Game + Data + Network + Core + tests
+- `Core.slnf` — Core library + its tests only
+- `Domain.slnf` — Domain + Core + tests
 - `All.slnf` — Everything (same as opening the `.slnx`)
 
 ## License
 
 [<LICENSE>](<GITHUB_URL>/blob/main/LICENSE) © <YEAR> <COMPANY>
+```
 
-````
-
-**Agent note**: Update the Architecture tree and Solution Structure table to match the user's actual `DOMAIN_LAYERS`. The examples above use the game client breakdown.
+**Agent note**: Update the Architecture tree and Solution Structure table to match the user's actual `DOMAIN_LAYERS`. The examples above use a generic layered architecture — replace layer names and descriptions to reflect the user's domain.
 
 ---
 
@@ -368,9 +363,8 @@ At application scale, **Central Package Management (CPM)** is mandatory from day
        CORE / SHARED
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Core">
-    <PackageVersion Include="System.IO.Pipelines" Version="10.0.0" />
-    <PackageVersion Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.0" />
-    <!-- Add as needed: System.Memory, System.Buffers, etc. -->
+    <!-- Add as needed: System.Memory, System.Buffers, System.IO.Pipelines, etc. -->
+    <PackageVersion Include="System.Memory" Version="4.5.5" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
@@ -421,7 +415,7 @@ At application scale, **Central Package Management (CPM)** is mandatory from day
 - Package versions shown above are **examples** — resolve current stable versions via `dotnet package search <name> --take 1` before scaffolding.
 - Organize by labeled `<ItemGroup>` sections for readability. With 50+ packages, flat lists become unmanageable.
 
-**Agent note**: The package list above is a **starter template for a game client**. Remove packages the user doesn't need. Add domain-specific packages (graphics libraries, audio libraries, etc.) as the user specifies them. The point is the _structure_, not the exact package set. CSharpier.MsBuild is the one **non-optional** package — it enforces formatting from build one.
+**Agent note**: The package list above is a **starter template for a local application**. Remove packages the user doesn't need. Add domain-specific packages (data access libraries, UI frameworks, AI client SDKs, etc.) as the user specifies them. The point is the _structure_, not the exact package set. `CSharpier.MsBuild` is the one **non-optional** package — it enforces formatting from build one.
 
 > **Resolving `<LATEST_CSHARPIER>`**: Run `dotnet package search CSharpier --take 1` or visit [nuget.org/packages/CSharpier](https://www.nuget.org/packages/CSharpier/). The version in `Directory.Packages.props` must match the version in `.config/dotnet-tools.json` — they are the same tool, referenced in two ways (MSBuild analyzer vs CLI tool).
 
@@ -523,20 +517,10 @@ Settings shared by all **source projects** (libraries + app) but NOT tests or be
     <!-- No source project is a NuGet package by default -->
     <IsPackable>false</IsPackable>
 
-    <!-- All source projects allow unsafe by default for a game client.
-         Remove this line if your app has no unsafe code. -->
+    <!-- Allow unsafe code if the application needs P/Invoke, SIMD, or interop.
+         Remove this line if your app has no unsafe code (set NEEDS_UNSAFE=false). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-
-    <!-- Non-CLS-compliant: common for game clients with interop.
-         REMOVE for pure managed applications. -->
-    <CLSCompliant>false</CLSCompliant>
   </PropertyGroup>
-
-  <ItemGroup>
-    <AssemblyAttribute Include="System.CLSCompliantAttribute">
-      <_Parameter1>false</_Parameter1>
-    </AssemblyAttribute>
-  </ItemGroup>
 
 </Project>
 ```
@@ -652,7 +636,7 @@ dotnet build -p:Version=1.2.3 -p:InformationalVersion=1.2.3+abcdef1
 
 This is the heart of the guide. Each domain layer is a folder under `src/` containing one or more library projects. The naming convention is `<APPNAME>.<Layer>` or `<APPNAME>.<Layer>.<Module>` for larger layers that split into multiple assemblies.
 
-### 4.1 Reference Architecture (Game Client)
+### 4.1 Reference Architecture
 
 ```
 src/
@@ -660,78 +644,36 @@ src/
 ├── Directory.Build.targets
 │
 ├── Core/                                           ← LAYER: Foundation (no dependencies)
-│   ├── <APPNAME>.Core/                             ← Primitives, math types, Result<T>
-│   │   ├── <APPNAME>.Core.csproj
-│   │   ├── Math/
-│   │   │   └── Vector2D.cs
-│   │   ├── Memory/
-│   │   │   └── PooledBuffer.cs
-│   │   └── Primitives/
-│   │       ├── FieldId.cs
-│   │       └── ItemId.cs
-│   └── <APPNAME>.Core.Collections/                 ← Specialized collections (optional split)
-│       ├── <APPNAME>.Core.Collections.csproj
-│       └── FixedCapacityList.cs
+│   └── <APPNAME>.Core/                             ← Primitives, value types, shared utilities
+│       ├── <APPNAME>.Core.csproj
+│       └── Types/
+│           ├── ServiceResult.cs
+│           └── ErrorCode.cs
 │
-├── Data/                                           ← LAYER: Data loading
-│   ├── <APPNAME>.Data/                             ← Abstract data access interfaces
-│   │   ├── <APPNAME>.Data.csproj
-│   │   └── IDataProvider.cs
-│   └── <APPNAME>.Data.Wz/                          ← WZ file format implementation
-│       ├── <APPNAME>.Data.Wz.csproj
-│       └── WzReader.cs
+├── Config/                                         ← LAYER: Configuration
+│   └── <APPNAME>.Config/
+│       ├── <APPNAME>.Config.csproj
+│       └── AppSettings.cs
 │
-├── Crypto/                                         ← LAYER: Cryptography
-│   └── <APPNAME>.Crypto/
-│       ├── <APPNAME>.Crypto.csproj
-│       ├── MapleAes.cs
-│       └── MapleCrc.cs
+├── Domain/                                         ← LAYER: Business logic
+│   └── <APPNAME>.Domain/
+│       ├── <APPNAME>.Domain.csproj
+│       └── Services/
+│           └── MessageHandler.cs
 │
-├── Network/                                        ← LAYER: Networking
-│   ├── <APPNAME>.Network/                          ← Packet I/O, connection management
-│   │   ├── <APPNAME>.Network.csproj
-│   │   ├── PacketReader.cs
-│   │   └── MapleClient.cs
-│   └── <APPNAME>.Network.Protocol/                 ← Opcode definitions, packet structures
-│       ├── <APPNAME>.Network.Protocol.csproj
-│       └── Opcodes/
-│           ├── RecvOps.cs
-│           └── SendOps.cs
+├── Infrastructure/                                 ← LAYER: External integrations
+│   ├── <APPNAME>.Infrastructure/                   ← Abstract infrastructure interfaces
+│   │   ├── <APPNAME>.Infrastructure.csproj
+│   │   └── IDataClient.cs
+│   └── <APPNAME>.Infrastructure.Http/              ← HTTP client implementation
+│       ├── <APPNAME>.Infrastructure.Http.csproj
+│       └── HttpDataClient.cs
 │
-├── Game/                                           ← LAYER: Game logic
-│   ├── <APPNAME>.Game/                             ← Core game state, shared abstractions
-│   │   ├── <APPNAME>.Game.csproj
-│   │   └── GameState.cs
-│   ├── <APPNAME>.Game.Combat/                      ← Combat mechanics
-│   │   ├── <APPNAME>.Game.Combat.csproj
-│   │   └── DamageCalculator.cs
-│   ├── <APPNAME>.Game.Inventory/                   ← Inventory system
-│   │   ├── <APPNAME>.Game.Inventory.csproj
-│   │   └── InventoryManager.cs
-│   ├── <APPNAME>.Game.Quest/                       ← Quest system
-│   │   ├── <APPNAME>.Game.Quest.csproj
-│   │   └── QuestManager.cs
-│   └── <APPNAME>.Game.Field/                       ← Map/field management
-│       ├── <APPNAME>.Game.Field.csproj
-│       └── FieldManager.cs
-│
-├── Rendering/                                      ← LAYER: Graphics
-│   ├── <APPNAME>.Rendering/                        ← Abstract rendering interfaces
-│   │   ├── <APPNAME>.Rendering.csproj
-│   │   └── IRenderer.cs
-│   └── <APPNAME>.Rendering.Sprites/                ← Sprite loading and animation
-│       ├── <APPNAME>.Rendering.Sprites.csproj
-│       └── SpriteSheet.cs
-│
-├── UI/                                             ← LAYER: User interface
-│   └── <APPNAME>.UI/
-│       ├── <APPNAME>.UI.csproj
-│       └── UIManager.cs
-│
-├── Audio/                                          ← LAYER: Audio
-│   └── <APPNAME>.Audio/
-│       ├── <APPNAME>.Audio.csproj
-│       └── AudioManager.cs
+├── Application/                                    ← LAYER: Use-case orchestration
+│   └── <APPNAME>.Application/
+│       ├── <APPNAME>.Application.csproj
+│       └── Handlers/
+│           └── ProcessRequestHandler.cs
 │
 ├── App/                                            ← LAYER: Application entry point
 │   ├── Directory.Build.props                       ← Tier 3 (OutputType=Exe, version)
@@ -744,17 +686,12 @@ src/
 │   ├── Directory.Build.props                       ← Tier 3 (TUnit, test config)
 │   ├── <APPNAME>.Core.Tests/
 │   │   ├── <APPNAME>.Core.Tests.csproj
-│   │   └── Math/
-│   │       └── Vector2DTests.cs
-│   ├── <APPNAME>.Crypto.Tests/
-│   │   ├── <APPNAME>.Crypto.Tests.csproj
-│   │   └── MapleCrcTests.cs
-│   ├── <APPNAME>.Network.Tests/
-│   │   ├── <APPNAME>.Network.Tests.csproj
-│   │   └── PacketReaderTests.cs
-│   ├── <APPNAME>.Game.Combat.Tests/
-│   │   ├── <APPNAME>.Game.Combat.Tests.csproj
-│   │   └── DamageCalculatorTests.cs
+│   │   └── Types/
+│   │       └── ServiceResultTests.cs
+│   ├── <APPNAME>.Domain.Tests/
+│   │   ├── <APPNAME>.Domain.Tests.csproj
+│   │   └── Services/
+│   │       └── MessageHandlerTests.cs
 │   └── <APPNAME>.Integration.Tests/                ← Cross-layer integration tests
 │       ├── <APPNAME>.Integration.Tests.csproj
 │       └── StartupTests.cs
@@ -764,7 +701,7 @@ src/
     └── <APPNAME>.Benchmarks/
         ├── <APPNAME>.Benchmarks.csproj
         ├── Program.cs
-        └── PacketReaderBench.cs
+        └── ServiceResultBench.cs
 ```
 
 ### 4.2 Layer Dependency Rules
@@ -772,20 +709,17 @@ src/
 These rules **must be enforced** — violations create circular dependencies that cripple build times and testability:
 
 ```
-Core           → (nothing)                          ← Pure leaf. Zero external references.
-Data           → Core
-Crypto         → Core
-Network        → Core, Crypto
-Game           → Core, Data, Network
-Rendering      → Core, Data
-UI             → Core, Rendering
-Audio          → Core, Data
-App            → ALL layers (composition root)
-Tests          → The layer they test + test infra
-Benchmarks     → The layer they benchmark + BDN
+Core            → (nothing)                          ← Pure leaf. Zero external references.
+Config          → Core
+Domain          → Core
+Infrastructure  → Core, Domain
+Application     → Core, Domain, Infrastructure
+App             → ALL layers (composition root)
+Tests           → The layer they test + test infra
+Benchmarks      → The layer they benchmark + BDN
 ```
 
-**Enforcement mechanism**: The dependency rules are enforced by `<ProjectReference>` in each `.csproj`. There is no magic — if `Rendering` has no `<ProjectReference>` to `Network`, it cannot use network types. The agent must verify no `.csproj` violates these rules.
+**Enforcement mechanism**: The dependency rules are enforced by `<ProjectReference>` in each `.csproj`. There is no magic — if `Domain` has no `<ProjectReference>` to `Infrastructure`, it cannot use infrastructure types. The agent must verify no `.csproj` violates these rules.
 
 For teams wanting automated enforcement, add an architecture test:
 
@@ -798,9 +732,9 @@ public void Core_HasNoProjectReferences()
 }
 
 [Test]
-public void Rendering_DoesNotReference_Network()
+public void Domain_DoesNotReference_Infrastructure()
 {
-    // Read Rendering .csproj, assert no reference to Network projects
+    // Read Domain .csproj, assert no reference to Infrastructure projects
 }
 ```
 
@@ -878,7 +812,7 @@ When a library exposes internal APIs to its test project:
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace><ROOTNS>.Crypto</RootNamespace>
+    <RootNamespace><ROOTNS>.Domain</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -888,7 +822,7 @@ When a library exposes internal APIs to its test project:
   <!-- Allow the test project to access internal types -->
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
-      <_Parameter1><APPNAME>.Crypto.Tests</_Parameter1>
+      <_Parameter1><APPNAME>.Domain.Tests</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 
@@ -899,38 +833,55 @@ When a library exposes internal APIs to its test project:
 
 Each library project needs at least one compilable file. Create a minimal entry point per project:
 
-**`src/Core/<APPNAME>.Core/Primitives/FieldId.cs`** — Example strongly-typed ID:
+**`src/Core/<APPNAME>.Core/Types/ServiceResult.cs`** — Example discriminated result type:
 
 ```csharp
-namespace <ROOTNS>.Core.Primitives;
+namespace <ROOTNS>.Core.Types;
 
 /// <summary>
-/// Strongly-typed field (map) identifier.
+/// Represents the outcome of a service operation, carrying either a value or an error.
 /// </summary>
-public readonly record struct FieldId(int Value)
+public readonly record struct ServiceResult<T>
 {
-    public static readonly FieldId None = new(0);
+    public static ServiceResult<T> Ok(T value) => new(value, null);
+    public static ServiceResult<T> Fail(string error) => new(default, error);
 
-    public override string ToString() => Value.ToString();
+    private ServiceResult(T? value, string? error)
+    {
+        Value = value;
+        Error = error;
+        IsSuccess = error is null;
+    }
+
+    public T? Value { get; }
+    public string? Error { get; }
+    public bool IsSuccess { get; }
+
+    public override string ToString() => IsSuccess ? $"Ok({Value})" : $"Fail({Error})";
 }
 ```
 
-**`src/Crypto/<APPNAME>.Crypto/MapleCrc.cs`** — Example placeholder:
+**`src/Domain/<APPNAME>.Domain/Services/MessageHandler.cs`** — Example domain service placeholder:
 
 ```csharp
-namespace <ROOTNS>.Crypto;
+using <ROOTNS>.Core.Types;
 
-public static class MapleCrc
+namespace <ROOTNS>.Domain.Services;
+
+public class MessageHandler
 {
-    public static uint Compute(ReadOnlySpan<byte> data)
+    public ServiceResult<string> Handle(string input)
     {
-        // TODO: Implement CRC32 computation
-        throw new NotImplementedException();
+        if (string.IsNullOrWhiteSpace(input))
+            return ServiceResult<string>.Fail("Input must not be empty.");
+
+        // TODO: Implement domain logic
+        return ServiceResult<string>.Ok(input.Trim());
     }
 }
 ```
 
-**Agent note**: Create **one** file per project with enough real structure to compile and be testable. Do not create empty placeholder classes — create the actual type that the project will contain, even if the implementation is `throw new NotImplementedException()`. This proves the project reference chain compiles end-to-end.
+**Agent note**: Create **one** file per project with enough real structure to compile and be testable. Do not create empty placeholder classes — create the actual type that the project will contain, even if the implementation is a stub. This proves the project reference chain compiles end-to-end.
 
 ---
 
@@ -951,29 +902,19 @@ The composition root — the only project that references all layers:
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <PublishTrimmed>false</PublishTrimmed>
-    <!-- Set PublishTrimmed=true only after verifying no reflection-based
-         code breaks. Game clients with plugin systems or dynamic loading
-         should leave this false. -->
+    <!-- Set PublishTrimmed=true only after verifying no reflection-based code breaks.
+         Applications using plugin systems, MEF, or dynamic loading should keep this false. -->
   </PropertyGroup>
 
   <!-- Reference all domain layers.
        The app project is the ONLY place where all layers converge. -->
   <ItemGroup>
     <ProjectReference Include="..\..\Core\<APPNAME>.Core\<APPNAME>.Core.csproj" />
-    <ProjectReference Include="..\..\Data\<APPNAME>.Data\<APPNAME>.Data.csproj" />
-    <ProjectReference Include="..\..\Data\<APPNAME>.Data.Wz\<APPNAME>.Data.Wz.csproj" />
-    <ProjectReference Include="..\..\Crypto\<APPNAME>.Crypto\<APPNAME>.Crypto.csproj" />
-    <ProjectReference Include="..\..\Network\<APPNAME>.Network\<APPNAME>.Network.csproj" />
-    <ProjectReference Include="..\..\Network\<APPNAME>.Network.Protocol\<APPNAME>.Network.Protocol.csproj" />
-    <ProjectReference Include="..\..\Game\<APPNAME>.Game\<APPNAME>.Game.csproj" />
-    <ProjectReference Include="..\..\Game\<APPNAME>.Game.Combat\<APPNAME>.Game.Combat.csproj" />
-    <ProjectReference Include="..\..\Game\<APPNAME>.Game.Inventory\<APPNAME>.Game.Inventory.csproj" />
-    <ProjectReference Include="..\..\Game\<APPNAME>.Game.Quest\<APPNAME>.Game.Quest.csproj" />
-    <ProjectReference Include="..\..\Game\<APPNAME>.Game.Field\<APPNAME>.Game.Field.csproj" />
-    <ProjectReference Include="..\..\Rendering\<APPNAME>.Rendering\<APPNAME>.Rendering.csproj" />
-    <ProjectReference Include="..\..\Rendering\<APPNAME>.Rendering.Sprites\<APPNAME>.Rendering.Sprites.csproj" />
-    <ProjectReference Include="..\..\UI\<APPNAME>.UI\<APPNAME>.UI.csproj" />
-    <ProjectReference Include="..\..\Audio\<APPNAME>.Audio\<APPNAME>.Audio.csproj" />
+    <ProjectReference Include="..\..\Config\<APPNAME>.Config\<APPNAME>.Config.csproj" />
+    <ProjectReference Include="..\..\Domain\<APPNAME>.Domain\<APPNAME>.Domain.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\<APPNAME>.Infrastructure\<APPNAME>.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Application\<APPNAME>.Application\<APPNAME>.Application.csproj" />
+    <!-- Add more layers here as the user's DOMAIN_LAYERS expand -->
   </ItemGroup>
 
   <!-- Host builder + configuration -->
@@ -1023,9 +964,9 @@ public static class Program
                 .ConfigureServices((context, services) =>
                 {
                     // Register domain services here:
-                    // services.AddSingleton<IDataProvider, WzDataProvider>();
-                    // services.AddSingleton<IRenderer, SomeRenderer>();
-                    // services.AddHostedService<GameLoop>();
+                    // services.AddSingleton<IDataClient, HttpDataClient>();
+                    // services.AddScoped<MessageHandler>();
+                    // services.AddHostedService<WorkerService>();
                 })
                 .Build();
 
@@ -1084,7 +1025,7 @@ If the application ships native `.dll`/`.so` files alongside the managed binary,
 </Project>
 ```
 
-**Agent note**: Only create the native asset structure if `NEEDS_NATIVE=true`. Most game clients do need this for graphics/audio backends.
+**Agent note**: Only create the native asset structure if `NEEDS_NATIVE=true`. Applications that use native graphics, audio, or hardware SDK binaries typically need this.
 
 ---
 
@@ -1115,24 +1056,26 @@ Each layer gets a corresponding test project under `src/Tests/`. The template is
 Every test project gets one real test. Example for `<APPNAME>.Core.Tests`:
 
 ```csharp
-using <ROOTNS>.Core.Primitives;
+using <ROOTNS>.Core.Types;
 
 namespace <ROOTNS>.Core.Tests;
 
-public class FieldIdTests
+public class ServiceResultTests
 {
     [Test]
-    public async Task None_HasValueZero()
+    public async Task Ok_ReturnsSuccessWithValue()
     {
-        await Assert.That(FieldId.None.Value).IsEqualTo(0);
+        var result = ServiceResult<string>.Ok("hello");
+        await Assert.That(result.IsSuccess).IsTrue();
+        await Assert.That(result.Value).IsEqualTo("hello");
     }
 
     [Test]
-    public async Task FieldId_EqualityByValue()
+    public async Task Fail_ReturnsFailureWithError()
     {
-        var a = new FieldId(100000000);
-        var b = new FieldId(100000000);
-        await Assert.That(b).IsEqualTo(a);
+        var result = ServiceResult<string>.Fail("not found");
+        await Assert.That(result.IsSuccess).IsFalse();
+        await Assert.That(result.Error).IsEqualTo("not found");
     }
 }
 ```
@@ -1151,9 +1094,9 @@ Cross-layer integration tests live in `<APPNAME>.Integration.Tests`:
   <!-- Integration tests can reference multiple layers -->
   <ItemGroup>
     <ProjectReference Include="..\..\Core\<APPNAME>.Core\<APPNAME>.Core.csproj" />
-    <ProjectReference Include="..\..\Crypto\<APPNAME>.Crypto\<APPNAME>.Crypto.csproj" />
-    <ProjectReference Include="..\..\Network\<APPNAME>.Network\<APPNAME>.Network.csproj" />
-    <ProjectReference Include="..\..\Network\<APPNAME>.Network.Protocol\<APPNAME>.Network.Protocol.csproj" />
+    <ProjectReference Include="..\..\Domain\<APPNAME>.Domain\<APPNAME>.Domain.csproj" />
+    <ProjectReference Include="..\..\Infrastructure\<APPNAME>.Infrastructure\<APPNAME>.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Application\<APPNAME>.Application\<APPNAME>.Application.csproj" />
   </ItemGroup>
 
 </Project>
@@ -1171,37 +1114,35 @@ public class StartupTests
     {
         // Proves the full dependency chain resolves at runtime.
         // If any ProjectReference is broken, this test fails.
-        var coreAssembly = typeof(<ROOTNS>.Core.Primitives.FieldId).Assembly;
+        var coreAssembly = typeof(<ROOTNS>.Core.Types.ServiceResult<string>).Assembly;
         await Assert.That(coreAssembly).IsNotNull();
 
-        var cryptoAssembly = typeof(<ROOTNS>.Crypto.MapleCrc).Assembly;
-        await Assert.That(cryptoAssembly).IsNotNull();
+        var domainAssembly = typeof(<ROOTNS>.Domain.Services.MessageHandler).Assembly;
+        await Assert.That(domainAssembly).IsNotNull();
     }
 }
 ```
 
 ### 7.4 Which Layers Get Test Projects?
 
-| Layer           | Test project?     | Rationale                                                |
-| --------------- | ----------------- | -------------------------------------------------------- |
-| Core            | Yes, always       | Foundation — must be rock solid                          |
-| Data            | Yes               | Data parsing correctness is critical                     |
-| Crypto          | Yes, always       | Crypto bugs are security vulnerabilities                 |
-| Network         | Yes               | Protocol correctness                                     |
-| Game (each sub) | Yes per subsystem | Business logic — highest bug density                     |
-| Rendering       | Optional          | Hard to unit test graphics; prefer visual/manual testing |
-| UI              | Optional          | Same as Rendering                                        |
-| Audio           | Optional          | Same                                                     |
-| App             | No unit tests     | Tested via Integration.Tests                             |
-| Benchmarks      | No                | Benchmarks ARE the test                                  |
+| Layer           | Test project?     | Rationale                                                      |
+| --------------- | ----------------- | -------------------------------------------------------------- |
+| Core            | Yes, always       | Foundation — must be rock solid                                |
+| Config          | Yes               | Settings parsing correctness matters                           |
+| Domain          | Yes, always       | Business logic — highest bug density                           |
+| Infrastructure  | Yes               | I/O correctness; use in-memory/fake implementations in tests   |
+| Application     | Yes               | Orchestration correctness; test handlers in isolation          |
+| CLI / UI        | Optional          | Hard to unit test UI; prefer integration/acceptance tests      |
+| App             | No unit tests     | Tested via Integration.Tests                                   |
+| Benchmarks      | No                | Benchmarks ARE the test                                        |
 
-**Rule**: Create a test project for every layer that has **deterministic, assertable behavior**. Skip layers that are primarily side-effect-driven (rendering, audio) unless you have a headless test harness.
+**Rule**: Create a test project for every layer that has **deterministic, assertable behavior**. Skip layers that are primarily side-effect-driven (UI rendering, hardware I/O) unless you have a headless or fake harness.
 
 ---
 
 ## Phase 8: Benchmarks (Optional)
 
-If the user wants performance benchmarks, follow this simplified pattern. Unlike the library guide, there are no comparison benchmarks (you're not competing with another game client on NuGet):
+If the user wants performance benchmarks, follow this simplified pattern. Unlike the library guide, there are no comparison benchmarks (you're not benchmarking against a competing NuGet library):
 
 ### 8.1 `src/Benchmarks/<APPNAME>.Benchmarks/<APPNAME>.Benchmarks.csproj`
 
@@ -1216,8 +1157,7 @@ If the user wants performance benchmarks, follow this simplified pattern. Unlike
   <ItemGroup>
     <!-- Reference the specific layers you want to benchmark -->
     <ProjectReference Include="..\..\Core\<APPNAME>.Core\<APPNAME>.Core.csproj" />
-    <ProjectReference Include="..\..\Crypto\<APPNAME>.Crypto\<APPNAME>.Crypto.csproj" />
-    <ProjectReference Include="..\..\Network\<APPNAME>.Network\<APPNAME>.Network.csproj" />
+    <ProjectReference Include="..\..\Domain\<APPNAME>.Domain\<APPNAME>.Domain.csproj" />
   </ItemGroup>
 
 </Project>
@@ -1235,18 +1175,18 @@ BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 
 ```csharp
 using BenchmarkDotNet.Attributes;
-using <ROOTNS>.Core.Primitives;
+using <ROOTNS>.Core.Types;
+using <ROOTNS>.Domain.Services;
 
 namespace <ROOTNS>.Benchmarks;
 
 [MemoryDiagnoser]
-public class FieldIdBench
+public class MessageHandlerBench
 {
-    [Benchmark]
-    public FieldId Create() => new(100000000);
+    private readonly MessageHandler _handler = new();
 
     [Benchmark]
-    public string ToStringBench() => new FieldId(100000000).ToString();
+    public ServiceResult<string> Handle() => _handler.Handle("benchmark input");
 }
 ```
 
@@ -1336,15 +1276,17 @@ int Bench(string[] a)
         repoRoot);
     return 0;
 }
-
-int Format(string[] a)
 {
     // CSharpier: opinionated whitespace/formatting
-    // dotnet format: code style analyzers (naming, usings, etc.)
+    // dotnet format style: naming conventions, using-directive order, IDE style rules
+    // dotnet format analyzers: Roslyn analyzer violations
+    // NOTE: Never run bare 'dotnet format' — it triggers the 'whitespace' sub-check
+    // which rewrites CSharpier's Allman-style brace formatting, causing CI failures.
     var verify = a.Length > 1 && a[1] == "check";
     Run("dotnet", "tool restore", repoRoot);
     Run("dotnet", verify ? "csharpier check ." : "csharpier format .", repoRoot);
-    Run("dotnet", verify ? "format --verify-no-changes" : "format", repoRoot);
+    Run("dotnet", verify ? "format style --verify-no-changes" : "format style", repoRoot);
+    Run("dotnet", verify ? "format analyzers --verify-no-changes" : "format analyzers", repoRoot);
     return 0;
 }
 
@@ -1489,49 +1431,29 @@ A 100-project solution is unnavigable without solution folders. `.slnx` supports
   <!-- ═══════════ Core ═══════════ -->
   <Folder Name="/Core/">
     <Project Path="src/Core/<APPNAME>.Core/<APPNAME>.Core.csproj" />
-    <!-- <Project Path="src/Core/<APPNAME>.Core.Collections/<APPNAME>.Core.Collections.csproj" /> -->
   </Folder>
 
-  <!-- ═══════════ Data ═══════════ -->
-  <Folder Name="/Data/">
-    <Project Path="src/Data/<APPNAME>.Data/<APPNAME>.Data.csproj" />
-    <Project Path="src/Data/<APPNAME>.Data.Wz/<APPNAME>.Data.Wz.csproj" />
+  <!-- ═══════════ Config ═══════════ -->
+  <Folder Name="/Config/">
+    <Project Path="src/Config/<APPNAME>.Config/<APPNAME>.Config.csproj" />
   </Folder>
 
-  <!-- ═══════════ Crypto ═══════════ -->
-  <Folder Name="/Crypto/">
-    <Project Path="src/Crypto/<APPNAME>.Crypto/<APPNAME>.Crypto.csproj" />
+  <!-- ═══════════ Domain ═══════════ -->
+  <Folder Name="/Domain/">
+    <Project Path="src/Domain/<APPNAME>.Domain/<APPNAME>.Domain.csproj" />
+    <!-- Add sub-domain projects here as the layer grows:
+    <Project Path="src/Domain/<APPNAME>.Domain.Orders/<APPNAME>.Domain.Orders.csproj" /> -->
   </Folder>
 
-  <!-- ═══════════ Network ═══════════ -->
-  <Folder Name="/Network/">
-    <Project Path="src/Network/<APPNAME>.Network/<APPNAME>.Network.csproj" />
-    <Project Path="src/Network/<APPNAME>.Network.Protocol/<APPNAME>.Network.Protocol.csproj" />
+  <!-- ═══════════ Infrastructure ═══════════ -->
+  <Folder Name="/Infrastructure/">
+    <Project Path="src/Infrastructure/<APPNAME>.Infrastructure/<APPNAME>.Infrastructure.csproj" />
+    <Project Path="src/Infrastructure/<APPNAME>.Infrastructure.Http/<APPNAME>.Infrastructure.Http.csproj" />
   </Folder>
 
-  <!-- ═══════════ Game ═══════════ -->
-  <Folder Name="/Game/">
-    <Project Path="src/Game/<APPNAME>.Game/<APPNAME>.Game.csproj" />
-    <Project Path="src/Game/<APPNAME>.Game.Combat/<APPNAME>.Game.Combat.csproj" />
-    <Project Path="src/Game/<APPNAME>.Game.Inventory/<APPNAME>.Game.Inventory.csproj" />
-    <Project Path="src/Game/<APPNAME>.Game.Quest/<APPNAME>.Game.Quest.csproj" />
-    <Project Path="src/Game/<APPNAME>.Game.Field/<APPNAME>.Game.Field.csproj" />
-  </Folder>
-
-  <!-- ═══════════ Rendering ═══════════ -->
-  <Folder Name="/Rendering/">
-    <Project Path="src/Rendering/<APPNAME>.Rendering/<APPNAME>.Rendering.csproj" />
-    <Project Path="src/Rendering/<APPNAME>.Rendering.Sprites/<APPNAME>.Rendering.Sprites.csproj" />
-  </Folder>
-
-  <!-- ═══════════ UI ═══════════ -->
-  <Folder Name="/UI/">
-    <Project Path="src/UI/<APPNAME>.UI/<APPNAME>.UI.csproj" />
-  </Folder>
-
-  <!-- ═══════════ Audio ═══════════ -->
-  <Folder Name="/Audio/">
-    <Project Path="src/Audio/<APPNAME>.Audio/<APPNAME>.Audio.csproj" />
+  <!-- ═══════════ Application ═══════════ -->
+  <Folder Name="/Application/">
+    <Project Path="src/Application/<APPNAME>.Application/<APPNAME>.Application.csproj" />
   </Folder>
 
   <!-- ═══════════ App ═══════════ -->
@@ -1542,9 +1464,7 @@ A 100-project solution is unnavigable without solution folders. `.slnx` supports
   <!-- ═══════════ Tests ═══════════ -->
   <Folder Name="/Tests/">
     <Project Path="src/Tests/<APPNAME>.Core.Tests/<APPNAME>.Core.Tests.csproj" />
-    <Project Path="src/Tests/<APPNAME>.Crypto.Tests/<APPNAME>.Crypto.Tests.csproj" />
-    <Project Path="src/Tests/<APPNAME>.Network.Tests/<APPNAME>.Network.Tests.csproj" />
-    <Project Path="src/Tests/<APPNAME>.Game.Combat.Tests/<APPNAME>.Game.Combat.Tests.csproj" />
+    <Project Path="src/Tests/<APPNAME>.Domain.Tests/<APPNAME>.Domain.Tests.csproj" />
     <Project Path="src/Tests/<APPNAME>.Integration.Tests/<APPNAME>.Integration.Tests.csproj" />
   </Folder>
 
@@ -1576,7 +1496,7 @@ Solution filters let developers load a subset of the solution. This is essential
 }
 ```
 
-**`Network.slnf`** — Network stack with transitive dependencies:
+**`Domain.slnf`** — Domain + dependencies + tests:
 
 ```json
 {
@@ -1584,18 +1504,15 @@ Solution filters let developers load a subset of the solution. This is essential
     "path": "<APPNAME>.slnx",
     "projects": [
       "src/Core/<APPNAME>.Core/<APPNAME>.Core.csproj",
-      "src/Crypto/<APPNAME>.Crypto/<APPNAME>.Crypto.csproj",
-      "src/Network/<APPNAME>.Network/<APPNAME>.Network.csproj",
-      "src/Network/<APPNAME>.Network.Protocol/<APPNAME>.Network.Protocol.csproj",
+      "src/Domain/<APPNAME>.Domain/<APPNAME>.Domain.csproj",
       "src/Tests/<APPNAME>.Core.Tests/<APPNAME>.Core.Tests.csproj",
-      "src/Tests/<APPNAME>.Crypto.Tests/<APPNAME>.Crypto.Tests.csproj",
-      "src/Tests/<APPNAME>.Network.Tests/<APPNAME>.Network.Tests.csproj"
+      "src/Tests/<APPNAME>.Domain.Tests/<APPNAME>.Domain.Tests.csproj"
     ]
   }
 }
 ```
 
-**`Game.slnf`** — Game logic with all transitive dependencies:
+**`Application.slnf`** — Full application layer with all transitive dependencies:
 
 ```json
 {
@@ -1603,17 +1520,14 @@ Solution filters let developers load a subset of the solution. This is essential
     "path": "<APPNAME>.slnx",
     "projects": [
       "src/Core/<APPNAME>.Core/<APPNAME>.Core.csproj",
-      "src/Data/<APPNAME>.Data/<APPNAME>.Data.csproj",
-      "src/Data/<APPNAME>.Data.Wz/<APPNAME>.Data.Wz.csproj",
-      "src/Crypto/<APPNAME>.Crypto/<APPNAME>.Crypto.csproj",
-      "src/Network/<APPNAME>.Network/<APPNAME>.Network.csproj",
-      "src/Network/<APPNAME>.Network.Protocol/<APPNAME>.Network.Protocol.csproj",
-      "src/Game/<APPNAME>.Game/<APPNAME>.Game.csproj",
-      "src/Game/<APPNAME>.Game.Combat/<APPNAME>.Game.Combat.csproj",
-      "src/Game/<APPNAME>.Game.Inventory/<APPNAME>.Game.Inventory.csproj",
-      "src/Game/<APPNAME>.Game.Quest/<APPNAME>.Game.Quest.csproj",
-      "src/Game/<APPNAME>.Game.Field/<APPNAME>.Game.Field.csproj",
-      "src/Tests/<APPNAME>.Game.Combat.Tests/<APPNAME>.Game.Combat.Tests.csproj"
+      "src/Config/<APPNAME>.Config/<APPNAME>.Config.csproj",
+      "src/Domain/<APPNAME>.Domain/<APPNAME>.Domain.csproj",
+      "src/Infrastructure/<APPNAME>.Infrastructure/<APPNAME>.Infrastructure.csproj",
+      "src/Infrastructure/<APPNAME>.Infrastructure.Http/<APPNAME>.Infrastructure.Http.csproj",
+      "src/Application/<APPNAME>.Application/<APPNAME>.Application.csproj",
+      "src/Tests/<APPNAME>.Core.Tests/<APPNAME>.Core.Tests.csproj",
+      "src/Tests/<APPNAME>.Domain.Tests/<APPNAME>.Domain.Tests.csproj",
+      "src/Tests/<APPNAME>.Integration.Tests/<APPNAME>.Integration.Tests.csproj"
     ]
   }
 }
@@ -1671,14 +1585,14 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@<PINNED-SHA>
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@<PINNED-SHA>
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@<PINNED-SHA>
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           global-json-file: global.json
 
@@ -1695,20 +1609,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@<PINNED-SHA>
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@<PINNED-SHA>
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup .NET
-        uses: actions/setup-dotnet@<PINNED-SHA>
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           global-json-file: global.json
       - name: Restore tools
         run: dotnet tool restore
       - name: CSharpier verify no changes
         run: dotnet csharpier check .
-      - name: Format verify no changes
-        run: dotnet format --verify-no-changes
+      - name: Format style verify no changes
+        run: dotnet format style --verify-no-changes
+      - name: Format analyzers verify no changes
+        run: dotnet format analyzers --verify-no-changes
 
   publish:
     needs: [build-and-test, format]
@@ -1728,14 +1644,14 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@<PINNED-SHA>
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@<PINNED-SHA>
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@<PINNED-SHA>
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           global-json-file: global.json
 
@@ -1758,7 +1674,7 @@ jobs:
           -o publish/${{ matrix.rid }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@<PINNED-SHA>
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: <APPNAME>-${{ matrix.rid }}
           if-no-files-found: error
@@ -1774,14 +1690,14 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@<PINNED-SHA>
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@<PINNED-SHA>
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Download all artifacts
-        uses: actions/download-artifact@<PINNED-SHA>
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: release-artifacts/
 
@@ -1816,13 +1732,13 @@ git ls-remote --tags https://github.com/actions/checkout | tail -1
 # Or visit: https://github.com/actions/checkout/releases → copy commit SHA
 ```
 
-| Placeholder in workflow       | Action                        | Minimum version | SHA (fill before scaffolding)      |
-| ----------------------------- | ----------------------------- | --------------- | ---------------------------------- |
-| `step-security/harden-runner` | `step-security/harden-runner` | v2.13+          | `________________________________` |
-| `actions/checkout`            | `actions/checkout`            | v6.0+           | `________________________________` |
-| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5.0+           | `________________________________` |
-| `actions/upload-artifact`     | `actions/upload-artifact`     | v7.0+           | `________________________________` |
-| `actions/download-artifact`   | `actions/download-artifact`   | v8.0+           | `________________________________` |
+| Action                        | Pinned to version | SHA                                        | Last verified |
+| ----------------------------- | ----------------- | ------------------------------------------ | ------------- |
+| `step-security/harden-runner` | v2.18.0           | `6c3c2f2c1c457b00c10c4848d6f5491db3b629df` | 2026-04-17    |
+| `actions/checkout`            | v6.0.2            | `de0fac2e4500dabe0009e67214ff5f5447ce83dd` | 2026-04-17    |
+| `actions/setup-dotnet`        | v5.2.0            | `c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7` | 2026-04-17    |
+| `actions/upload-artifact`     | v7.0.1            | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | 2026-04-17    |
+| `actions/download-artifact`   | v8.0.1            | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-04-17    |
 
 If the table above is empty at scaffold time, the agent **must** use version tags as a temporary fallback (e.g., `actions/checkout@v6`) and add a `TODO:` comment on each line: `# TODO: Pin to full SHA before merging to main`. The Phase 14 validation checklist will catch these.
 
@@ -1889,7 +1805,8 @@ Before declaring the scaffold complete, verify:
 - [ ] `dotnet test -c Release` passes
 - [ ] `dotnet tool restore` succeeds (installs CSharpier)
 - [ ] `dotnet csharpier check .` passes (opinionated formatting)
-- [ ] `dotnet format --verify-no-changes` passes (code style analyzers)
+- [ ] `dotnet format style --verify-no-changes` passes (code style rules)
+- [ ] `dotnet format analyzers --verify-no-changes` passes (Roslyn analyzers)
 - [ ] `dotnet Build.cs format check` passes (runs both CSharpier + dotnet format)
 
 ### Application
@@ -1952,58 +1869,29 @@ After all phases, the repository contains these files (substitute `<APPNAME>` an
 │   ├── Core/
 │   │   └── <APPNAME>.Core/
 │   │       ├── <APPNAME>.Core.csproj
-│   │       └── Primitives/
-│   │           └── FieldId.cs
-│   ├── Data/
-│   │   ├── <APPNAME>.Data/
-│   │   │   ├── <APPNAME>.Data.csproj
-│   │   │   └── IDataProvider.cs
-│   │   └── <APPNAME>.Data.Wz/
-│   │       ├── <APPNAME>.Data.Wz.csproj
-│   │       └── WzReader.cs
-│   ├── Crypto/
-│   │   └── <APPNAME>.Crypto/
-│   │       ├── <APPNAME>.Crypto.csproj
-│   │       └── MapleCrc.cs
-│   ├── Network/
-│   │   ├── <APPNAME>.Network/
-│   │   │   ├── <APPNAME>.Network.csproj
-│   │   │   └── PacketReader.cs
-│   │   └── <APPNAME>.Network.Protocol/
-│   │       ├── <APPNAME>.Network.Protocol.csproj
-│   │       └── Opcodes/
-│   │           └── RecvOps.cs
-│   ├── Game/
-│   │   ├── <APPNAME>.Game/
-│   │   │   ├── <APPNAME>.Game.csproj
-│   │   │   └── GameState.cs
-│   │   ├── <APPNAME>.Game.Combat/
-│   │   │   ├── <APPNAME>.Game.Combat.csproj
-│   │   │   └── DamageCalculator.cs
-│   │   ├── <APPNAME>.Game.Inventory/
-│   │   │   ├── <APPNAME>.Game.Inventory.csproj
-│   │   │   └── InventoryManager.cs
-│   │   ├── <APPNAME>.Game.Quest/
-│   │   │   ├── <APPNAME>.Game.Quest.csproj
-│   │   │   └── QuestManager.cs
-│   │   └── <APPNAME>.Game.Field/
-│   │       ├── <APPNAME>.Game.Field.csproj
-│   │       └── FieldManager.cs
-│   ├── Rendering/
-│   │   ├── <APPNAME>.Rendering/
-│   │   │   ├── <APPNAME>.Rendering.csproj
-│   │   │   └── IRenderer.cs
-│   │   └── <APPNAME>.Rendering.Sprites/
-│   │       ├── <APPNAME>.Rendering.Sprites.csproj
-│   │       └── SpriteSheet.cs
-│   ├── UI/
-│   │   └── <APPNAME>.UI/
-│   │       ├── <APPNAME>.UI.csproj
-│   │       └── UIManager.cs
-│   ├── Audio/
-│   │   └── <APPNAME>.Audio/
-│   │       ├── <APPNAME>.Audio.csproj
-│   │       └── AudioManager.cs
+│   │       └── Types/
+│   │           └── ServiceResult.cs
+│   ├── Config/
+│   │   └── <APPNAME>.Config/
+│   │       ├── <APPNAME>.Config.csproj
+│   │       └── AppSettings.cs
+│   ├── Domain/
+│   │   └── <APPNAME>.Domain/
+│   │       ├── <APPNAME>.Domain.csproj
+│   │       └── Services/
+│   │           └── MessageHandler.cs
+│   ├── Infrastructure/
+│   │   ├── <APPNAME>.Infrastructure/
+│   │   │   ├── <APPNAME>.Infrastructure.csproj
+│   │   │   └── IDataClient.cs
+│   │   └── <APPNAME>.Infrastructure.Http/
+│   │       ├── <APPNAME>.Infrastructure.Http.csproj
+│   │       └── HttpDataClient.cs
+│   ├── Application/
+│   │   └── <APPNAME>.Application/
+│   │       ├── <APPNAME>.Application.csproj
+│   │       └── Handlers/
+│   │           └── ProcessRequestHandler.cs
 │   │
 │   ├── App/
 │   │   ├── Directory.Build.props                       ← Tier 3 (app)
@@ -2016,16 +1904,12 @@ After all phases, the repository contains these files (substitute `<APPNAME>` an
 │   │   ├── Directory.Build.props                       ← Tier 3 (tests)
 │   │   ├── <APPNAME>.Core.Tests/
 │   │   │   ├── <APPNAME>.Core.Tests.csproj
-│   │   │   └── FieldIdTests.cs
-│   │   ├── <APPNAME>.Crypto.Tests/
-│   │   │   ├── <APPNAME>.Crypto.Tests.csproj
-│   │   │   └── MapleCrcTests.cs
-│   │   ├── <APPNAME>.Network.Tests/
-│   │   │   ├── <APPNAME>.Network.Tests.csproj
-│   │   │   └── PacketReaderTests.cs
-│   │   ├── <APPNAME>.Game.Combat.Tests/
-│   │   │   ├── <APPNAME>.Game.Combat.Tests.csproj
-│   │   │   └── DamageCalculatorTests.cs
+│   │   │   └── Types/
+│   │   │       └── ServiceResultTests.cs
+│   │   ├── <APPNAME>.Domain.Tests/
+│   │   │   ├── <APPNAME>.Domain.Tests.csproj
+│   │   │   └── Services/
+│   │   │       └── MessageHandlerTests.cs
 │   │   └── <APPNAME>.Integration.Tests/
 │   │       ├── <APPNAME>.Integration.Tests.csproj
 │   │       └── StartupTests.cs
@@ -2035,7 +1919,7 @@ After all phases, the repository contains these files (substitute `<APPNAME>` an
 │       └── <APPNAME>.Benchmarks/
 │           ├── <APPNAME>.Benchmarks.csproj
 │           ├── Program.cs
-│           └── FieldIdBench.cs
+│           └── MessageHandlerBench.cs
 │
 ├── .editorconfig
 ├── .csharpierrc.json
@@ -2048,8 +1932,8 @@ After all phases, the repository contains these files (substitute `<APPNAME>` an
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── Core.slnf                                           ← Solution filter (Phase 10.2)
-├── Network.slnf                                        ← Solution filter (Phase 10.2)
-├── Game.slnf                                           ← Solution filter (Phase 10.2)
+├── Domain.slnf                                         ← Solution filter (Phase 10.2)
+├── Application.slnf                                    ← Solution filter (Phase 10.2)
 ├── Directory.Build.props                               ← Tier 1 (root)
 ├── Directory.Packages.props
 ├── global.json
@@ -2060,7 +1944,7 @@ After all phases, the repository contains these files (substitute `<APPNAME>` an
 └── <APPNAME>.slnx
 ```
 
-**Total**: ~76 files across ~40 directories for the game client reference architecture (9 layers, 16 source projects, 5 test projects, 1 benchmark project, 1 app project). Scales to 100+ projects by adding more modules within existing layers.
+**Total**: ~45 files across ~25 directories for the reference architecture (6 domain layers, 7 source projects, 3 test projects, 1 benchmark project, 1 app project). Scales to 100+ projects by adding more modules within existing layers.
 
 ---
 
@@ -2070,13 +1954,15 @@ After all phases, the repository contains these files (substitute `<APPNAME>` an
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No benchmarks needed                                   | Remove `src/Benchmarks/` entirely and its `.slnx` folder entry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Need WPF or WinForms                                   | Change `APP_SDK` to `Microsoft.NET.Sdk.WindowsDesktop`; add `<UseWPF>true</UseWPF>` or `<UseWindowsForms>true</UseWindowsForms>` to app `Directory.Build.props`                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Multiple executables (client + server + tools)         | Add more projects under `src/App/`: `<APPNAME>.Server/`, `<APPNAME>.Tools.PacketSniffer/` — each with its own `.csproj`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Multiple executables (host + worker + CLI tools)       | Add more projects under `src/App/`: `<APPNAME>.Worker/`, `<APPNAME>.Tools.Importer/` — each with its own `.csproj`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Shared code between multiple apps                      | Extract into a `src/Shared/<APPNAME>.Shared/` project referenced by both apps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Native interop (P/Invoke)                              | Add `<APPNAME>.Native/` project under the relevant layer with `NativeLibrary.Load` and runtime-specific native binaries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Plugin/mod system                                      | Add `<APPNAME>.Sdk/` project defining the plugin contract interfaces; this IS packable (`<IsPackable>true</IsPackable>`) and ships as a NuGet package for mod developers                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Plugin extension system                                | Add `<APPNAME>.Sdk/` project defining the extension point interfaces; this IS packable (`<IsPackable>true</IsPackable>`) and ships as a NuGet package for external plugin authors                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Docker deployment                                      | Add `Dockerfile` and `docker-compose.yml` at repo root; CI builds and pushes container images instead of zip artifacts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Team uses Rider                                        | Replace `.slnx` with `.sln` via `dotnet new sln` + `dotnet sln add`. Keep solution folders by using `dotnet sln add --solution-folder`. Rider `.slnx` support is partial.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Need code coverage tracking                            | Re-add `codecov.yml` from library guide. No additional packages are needed — TUnit already bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively. Do NOT use `coverlet.collector` — it is a VSTest data collector and [does not work with TUnit's MTP runner](https://tunit.dev/docs/extending/code-coverage/). In CI, use `dotnet test --coverage --coverage-output-format cobertura` instead of `--collect:"XPlat Code Coverage"`. **VS Code**: install [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) for inline coverage display. |
+| Need circular dependency removed between two layers    | Extract the shared types or interfaces into a new intermediate layer (e.g., `Domain.Abstractions`) that both sides can reference without creating a cycle                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Need code coverage tracking                            | No additional packages needed \u2014 TUnit bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively. In CI add `--coverage --coverage-output-format cobertura` to `dotnet test`. Do NOT use `coverlet.collector` \u2014 it is a VSTest data collector and [does not work with TUnit's MTP runner](https://tunit.dev/docs/extending/code-coverage/). **VS Code**: install [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) for inline coverage display.                                                                                       |
+| Agent orchestration use case                           | Add an `Agents/` layer containing agent definitions, tool registrations, and orchestration logic. Depends on `Domain` and `Infrastructure`. Add Microsoft.Extensions.AI or Semantic Kernel packages to `Directory.Packages.props`; register them in `Program.cs` DI composition root.                                                                                                                                                                                                                                                                                                                      |
 | Multi-targeting (net8.0 + net10.0)                     | Change `<TargetFramework>` to `<TargetFrameworks>` in root `Directory.Build.props`; be aware this doubles build time                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Release versioning from CI                             | In CI workflow, pass `-p:Version=X.Y.Z -p:InformationalVersion=X.Y.Z+<commit-sha>` to build and publish steps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Need Git commit hash in app                            | Add `<SourceRevisionId>$(GITHUB_SHA)</SourceRevisionId>` to root `Directory.Build.props` under a `Condition="'$(GITHUB_ACTIONS)' == 'true'"` guard. Access at runtime via `Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()`.                                                                                                                                                                                                                                                                                                                                                           |
@@ -2090,7 +1976,7 @@ After all phases, the repository contains these files (substitute `<APPNAME>` an
 1. **Do not flatten all projects into `src/`**. A flat directory with 100 `.csproj` files is unnavigable. Use layer folders.
 2. **Do not duplicate build settings in every `.csproj`**. If you see `<TargetFramework>` or `<Nullable>` in a `.csproj`, it should be inherited from `Directory.Build.props`. The only exception is when a single project genuinely needs a different value.
 3. **Do not skip Central Package Management**. At 10+ projects, version drift is inevitable without CPM. At 50+, it's guaranteed.
-4. **Do not create circular layer dependencies**. If `Network` references `Game` and `Game` references `Network`, the architecture is broken — extract the shared types into `Core` or create a new shared layer.
+4. **Do not create circular layer dependencies**. If `Infrastructure` references `Application` and `Application` references `Infrastructure`, the architecture is broken — extract the shared abstractions into an interface layer (e.g., `Domain`) that both sides depend on.
 5. **Do not put test projects inside source layer folders**. Keep all tests under `src/Tests/` so the test `Directory.Build.props` applies cleanly without complex Import paths.
 6. **Do not create `.slnf` files that are missing transitive dependencies**. Visual Studio will fail to load the filter and developers will stop using filters entirely.
 7. **Do not add MinVer to an application project**. MinVer is designed for library semver on NuGet. Applications use explicit version properties injected at build time.
