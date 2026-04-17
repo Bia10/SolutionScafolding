@@ -1806,14 +1806,14 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           global-json-file: global.json
 
@@ -1830,14 +1830,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           global-json-file: global.json
 
@@ -1865,12 +1865,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           global-json-file: global.json
       - name: Restore tools
@@ -1886,22 +1886,22 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0 # full history for MinVer
       - name: Create tag (to set version)
         if: ${{ github.event.inputs.version != '' && github.actor == '<AUTHOR>' }}
         run: git tag v${{ github.event.inputs.version }}
       - name: Setup .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           global-json-file: global.json
       - name: Pack NuGet package
         run: dotnet pack -c Release --output ${{ env.NuGetDirectory }}
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nuget
           if-no-files-found: error
@@ -1918,17 +1918,17 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # v2.16.0
+        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
         with:
           egress-policy: audit
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Download nuget packages
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: nuget
           path: ${{ env.NuGetDirectory }}
       - name: Setup .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           global-json-file: global.json
       - name: Push packages
@@ -1957,12 +1957,12 @@ git ls-remote --tags https://github.com/actions/checkout | grep "refs/tags/v6$"
 
 | Placeholder in workflow       | Action                        | Pinned version | SHA                                        | Last verified |
 | ----------------------------- | ----------------------------- | -------------- | ------------------------------------------ | ------------- |
-| `step-security/harden-runner` | `step-security/harden-runner` | v2.16.0        | `fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594` | 2026-03-23    |
-| `actions/checkout`            | `actions/checkout`            | v6             | `de0fac2e4500dabe0009e67214ff5f5447ce83dd` | 2026-03-23    |
-| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5             | `c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7` | 2026-03-23    |
+| `step-security/harden-runner` | `step-security/harden-runner` | v2.18.0        | `6c3c2f2c1c457b00c10c4848d6f5491db3b629df` | 2026-04-17    |
+| `actions/checkout`            | `actions/checkout`            | v6.0.2         | `de0fac2e4500dabe0009e67214ff5f5447ce83dd` | 2026-04-17    |
+| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5.2.0         | `c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7` | 2026-04-17    |
 | `codecov/codecov-action`      | `codecov/codecov-action`      | v6.0.0         | `57e3a136b779b570ffcdbf80b3bdc90e7fab3de2` | 2026-03-27    |
-| `actions/upload-artifact`     | `actions/upload-artifact`     | v7             | `bbbca2ddaa5d8feaa63e36b76fdaad77386f024f` | 2026-03-23    |
-| `actions/download-artifact`   | `actions/download-artifact`   | v8             | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-03-23    |
+| `actions/upload-artifact`     | `actions/upload-artifact`     | v7.0.1         | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | 2026-04-17    |
+| `actions/download-artifact`   | `actions/download-artifact`   | v8.0.1         | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-04-17    |
 
 If the table above is empty at scaffold time, the agent **must** use version tags as a temporary fallback (e.g., `actions/checkout@v6`) and add a `TODO:` comment on each line: `# TODO: Pin to full SHA before merging to main`. The Phase 13 validation checklist will catch these.
 
