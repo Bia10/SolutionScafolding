@@ -1,38 +1,15 @@
 # Agent Guide: Creating a Distributed .NET Application Solution
 
-> **Purpose**: Step-by-step instructions for an AI agent to scaffold a distributed .NET application using **Aspire** as the orchestrator and either **Orleans** (virtual-actor model) or **Akka.NET** (classic-actor model) as the distributed compute framework — with multi-process hosts, grain/actor contracts, optional gateway, and full CI/CD from commit one.
-> **Companion to**: `Scaffold_LibSolution_AgentGuide.md` (library) and `Scaffold_AppSolution_AgentGuide.md` (monolith). This guide references those documents for shared root-config patterns.
-> **Inputs required from user before starting**: application name, actor framework (Orleans or Akka.NET), domain grain/actor topology, storage backend, whether a TCP/gRPC gateway is needed.
+> **Purpose**: Step-by-step instructions for an AI agent to scaffold a distributed .NET application using **Aspire** as the orchestrator and either **Orleans** (virtual-actor model) or **Akka.NET** (classic-actor model) as the distributed compute framework — with multi-process hosts, grain or actor contracts, optional gateway, and full CI/CD from commit one.
+> **Inputs required from user before starting**: application name, actor framework (Orleans or Akka.NET), domain grain or actor topology, storage backend, whether a TCP/gRPC gateway is needed.
 > **Output**: a complete, CI-ready, runnable distributed system repository scaffold with layered architecture, Aspire orchestration, and zero-tolerance code quality from commit one.
+> **Standalone guarantee**: every shared repository-root template and every distributed-system-specific scaffold step needed to complete the repository appears in this file.
 
 ---
 
-## How This Guide Relates to the Other Guides
+## Scope
 
-The [App Scaffold Guide](Scaffold_AppSolution_AgentGuide.md) targets a **single-process application** with a monolithic DI root. This guide targets a **multi-process distributed system** where:
-
-- Multiple service hosts run as separate processes (silo, gateway, AppHost)
-- Business logic lives in grains (Orleans) or actors (Akka.NET), not plain C# classes
-- Aspire provides orchestration, service discovery, and observability across all hosts
-- Tests require a `TestCluster` (Orleans) or `TestKit` (Akka.NET) in-process harness
-
-**Reused verbatim from the existing guides** (read those sections — not duplicated here):
-
-- Phase 1.1 `global.json`
-- Phase 1.2 `nuget.config`
-- Phase 1.3 `.gitignore` (with additions noted in Phase 1.3a below)
-- Phase 1.4 `.gitattributes`
-- Phase 1.5 `.editorconfig` (with additions noted in Phase 1.5a below)
-- Phase 1.6 `.jscpd.json`
-- Phase 1.7 `.markdownlint.json`
-- Phase 1.8 `.pre-commit-config.yaml`
-- Phase 1.11 `LICENSE`
-- Phase 1.12 `SECURITY.md`
-- Phase 1.13 `CONTRIBUTING.md`
-- Phase 1.13a `AGENTS.md`
-- Phase 1.16 `.config/dotnet-tools.json`
-- Phase 1.16a `.csharpierrc.json`
-- Phase 1.17 Issue/PR templates
+This guide targets a **multi-process distributed system** where multiple service hosts run as separate processes, business logic lives in grains or actors rather than plain classes, Aspire provides orchestration across all hosts, and tests use an in-process cluster or actor harness. It includes the shared repository-root baseline directly in Phase 1, then layers distributed-system structure, hosting, CI, and validation guidance on top.
 
 **Replaced entirely in this guide:**
 
@@ -121,7 +98,7 @@ Grain / actor persistence drives which storage packages are needed:
 
 ## Phase 0b: Initialize Git Repository
 
-Identical to the other guides:
+Before creating any files, initialize the repository:
 
 ```shell
 mkdir <APPNAME> && cd <APPNAME>
@@ -131,8 +108,20 @@ git init -b main
 **Verify git authorship** before the first commit:
 
 ```shell
-git config user.name   # must print the real name
-git config user.email  # must print the real email
+git config user.name   # must print the real name, not a placeholder
+git config user.email  # must print the real email / GitHub-linked address
+```
+
+If the output is wrong (for example it shows a machine hostname, `bia10@github.com`, or is empty), fix it before committing:
+
+```shell
+# Fix locally (this repo only):
+git config user.name  "Your Name"
+git config user.email "you@example.com"
+
+# Or remove a local override and fall back to global:
+git config --unset user.name
+git config --unset user.email
 ```
 
 > **Agent note**: Do not set or override `user.name`/`user.email` yourself. Flag any mismatch to the user.
@@ -146,6 +135,21 @@ dotnet format style
 dotnet format analyzers
 ```
 
+### Branch and PR workflow
+
+Create a scoped branch before adding source changes:
+
+```shell
+git checkout -b feature/<scope>-<summary>
+# or: fix/<scope>-<summary>, docs/<scope>-<summary>, refactor/<scope>-<summary>,
+#     test/<scope>-<summary>, chore/<scope>-<summary>, perf/<scope>-<summary>,
+#     research/<scope>-<summary>
+```
+
+Use lowercase prefixes. When the work is tied to a GitHub issue, include the issue number in the branch name, for example `feature/issue-123-add-aspire-gateway-host`.
+
+After the first green push, open a **draft** pull request, link the related issue in the PR body when one exists (`Fixes #123`), and keep review, verification, and remediation commits on that same branch until the PR is ready for human merge review.
+
 ### Recommended commit strategy
 
 ```shell
@@ -154,22 +158,475 @@ git add .editorconfig .csharpierrc.json .gitattributes .gitignore .jscpd.json .m
     .pre-commit-config.yaml .config/ global.json nuget.config \
     LICENSE SECURITY.md CONTRIBUTING.md AGENTS.md CHANGELOG.md \
     .github/ Directory.Build.props Directory.Packages.props README.md <APPNAME>.slnx
-git commit -m "chore: root config and repository health files"
+git commit -m "chore(repo): add root config and repository health files"
 
 # Commit 2: Project structure
 git add src/ test/ Build.cs
-git commit -m "chore: distributed project structure and Build.cs task runner"
+git commit -m "chore(scaffold): add distributed project structure and Build.cs task runner"
 
 # Commit 3: CI pipeline
 git add .github/workflows/ .github/dependabot.yml
-git commit -m "ci: GitHub Actions workflow and Dependabot"
+git commit -m "ci(github): add Actions workflow and Dependabot"
 ```
 
 ---
 
 ## Phase 1: Repository Root Files
 
-**Reuse from the App Guide**: Create all files listed in App Guide Phases 1.1–1.8, 1.11–1.13a, 1.16–1.17 verbatim. Then apply the modifications below.
+Create the shared repository-root files below first. This guide is standalone, so do not rely on any external guide or companion document for the baseline root files. After the shared baseline is in place, apply the distributed-system-specific `a` variants that follow.
+
+### 1.1 `global.json`
+
+```json
+{
+  "sdk": {
+    "version": "<SDK_VERSION>",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  }
+}
+```
+
+### 1.2 `nuget.config`
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+  </packageSources>
+</configuration>
+```
+
+### 1.3 `.gitignore`
+
+Generate the base file:
+
+```shell
+dotnet new gitignore
+```
+
+Then append these shared entries:
+
+```gitignore
+# Centralized build output (UseArtifactsOutput)
+artifacts/
+
+# BenchmarkDotNet local output
+BenchmarkDotNet.Artifacts/
+
+# Benchmark results (committed selectively by the author, not auto-generated)
+# benchmarks/ is NOT ignored — results are committed intentionally
+```
+
+### 1.4 `.gitattributes`
+
+```gitattributes
+* text=auto eol=lf
+*.cs text eol=lf
+*.csproj text eol=lf
+*.props text eol=lf
+*.targets text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+```
+
+### 1.5 `.editorconfig`
+
+```editorconfig
+root = true
+
+[*]
+indent_style = space
+
+[*.{csproj,props,targets,config,nuspec}]
+indent_size = 2
+
+[*.cs]
+indent_size = 4
+insert_final_newline = true
+end_of_line = lf
+charset = utf-8-bom
+
+[Build.cs]
+charset = utf-8
+
+[*.{yml,yaml}]
+charset = utf-8
+insert_final_newline = true
+indent_size = 2
+end_of_line = lf
+
+[*.json]
+indent_size = 2
+insert_final_newline = true
+
+dotnet_sort_system_directives_first = true
+dotnet_style_require_accessibility_modifiers = omit_if_default
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_throw_expression = true:error
+dotnet_diagnostic.IDE0055.severity = none
+dotnet_diagnostic.IDE0005.severity = error
+csharp_new_line_before_open_brace = accessors, lambdas, types, methods, properties, control_blocks
+
+dotnet_naming_rule.private_fields.symbols = private_fields
+dotnet_naming_rule.private_fields.style = _camelcase
+dotnet_naming_rule.private_fields.severity = suggestion
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private, protected
+dotnet_naming_style._camelcase.required_prefix = _
+dotnet_naming_style._camelcase.capitalization = camel_case
+
+dotnet_naming_rule.private_static_readonly.symbols = private_static_readonly
+dotnet_naming_rule.private_static_readonly.style = s_camelcase
+dotnet_naming_rule.private_static_readonly.severity = suggestion
+dotnet_naming_symbols.private_static_readonly.applicable_kinds = field
+dotnet_naming_symbols.private_static_readonly.applicable_accessibilities = private, protected
+dotnet_naming_symbols.private_static_readonly.required_modifiers = static, readonly
+dotnet_naming_style.s_camelcase.required_prefix = s_
+dotnet_naming_style.s_camelcase.capitalization = camel_case
+
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CS8981.severity = none
+dotnet_diagnostic.CA1805.severity = none
+dotnet_diagnostic.MA0008.severity = none
+dotnet_diagnostic.MA0051.severity = none
+```
+
+### 1.6 `.jscpd.json`
+
+```json
+{
+  "threshold": 5,
+  "reporters": ["console"],
+  "ignore": ["**/__mocks__/**", "**/node_modules/**", "**/artifacts/**"],
+  "absolute": true
+}
+```
+
+### 1.7 `.markdownlint.json`
+
+```json
+{
+  "default": true,
+  "MD013": false,
+  "MD033": false,
+  "MD041": false
+}
+```
+
+### 1.8 `.pre-commit-config.yaml`
+
+```yaml
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: <LATEST_GITLEAKS_TAG>
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: <LATEST_PRECOMMIT_HOOKS_TAG>
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: local
+    hooks:
+      - id: csharpier
+        name: CSharpier
+        language: system
+        entry: dotnet csharpier check
+        types: [c#]
+```
+
+Install `pre-commit` via `pip install pre-commit` or `pipx install pre-commit`. If Python is not available, skip this file and rely on CI plus the format checks.
+
+### 1.9 `codecov.yml` _(Optional)_
+
+```yaml
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 0%
+    patch:
+      default:
+        target: auto
+        threshold: 0%
+```
+
+### 1.11 `LICENSE`
+
+Use the full MIT license text with `Copyright (c) <YEAR> <COMPANY>`.
+
+### 1.12 `SECURITY.md`
+
+```markdown
+# Security Policy
+
+## Reporting a Vulnerability
+
+If you discover a security vulnerability, please report it via
+[GitHub's private vulnerability reporting](https://github.com/<AUTHOR>/<APPNAME>/security/advisories/new).
+
+Do **not** open a public issue for security vulnerabilities.
+```
+
+### 1.13 `CONTRIBUTING.md`
+
+````markdown
+# Contributing to <APPNAME>
+
+Thank you for considering contributing.
+
+## How to Contribute
+
+1. Create a scoped branch from `main`, for example `feature/<scope>-<summary>` or `fix/<scope>-<summary>`.
+2. Run `dotnet tool restore` to install local tools.
+3. Run `dotnet Build.cs format` before committing.
+4. Ensure the repository passes:
+
+   ```shell
+   dotnet build -c Release
+   dotnet test
+   dotnet Build.cs format check
+   ```
+
+5. Push the branch and open a draft pull request against `main`.
+
+## Reporting Issues
+
+Use GitHub Issues for bugs and feature requests.
+````
+
+### 1.16 `.config/dotnet-tools.json`
+
+```json
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "csharpier": {
+      "version": "<LATEST_CSHARPIER>",
+      "commands": ["csharpier"]
+    }
+  }
+}
+```
+
+### 1.16a `.csharpierrc.json`
+
+```json
+{
+  "printWidth": 120,
+  "useTabs": false,
+  "tabWidth": 4,
+  "endOfLine": "lf"
+}
+```
+
+Run `dotnet format` as `dotnet format style` plus `dotnet format analyzers`. Do not run bare `dotnet format` alongside CSharpier.
+
+### 1.17 `.github/ISSUE_TEMPLATE/bug_report.md`, `feature_request.md`, and `PULL_REQUEST_TEMPLATE.md`
+
+**`.github/ISSUE_TEMPLATE/bug_report.md`**:
+
+```markdown
+---
+name: Bug report
+about: Create a report to help us improve
+labels: bug
+---
+
+**Describe the bug**
+A clear and concise description of what the bug is.
+
+**To reproduce**
+Steps to reproduce the behavior.
+
+**Expected behavior**
+A clear and concise description of what you expected to happen.
+
+**Environment**
+
+- OS: [e.g. Windows 11, Ubuntu 24.04]
+- .NET version: [e.g. 10.0.3]
+- <APPNAME> version: [e.g. 1.2.3]
+
+**Additional context**
+Add any other context about the problem here.
+```
+
+**`.github/ISSUE_TEMPLATE/feature_request.md`**:
+
+```markdown
+---
+name: Feature request
+about: Suggest an idea for this project
+labels: enhancement
+---
+
+**Is your feature request related to a problem? Please describe.**
+A clear description of what the problem is.
+
+**Describe the solution you'd like**
+A clear description of what you want to happen.
+
+**Additional context**
+Add any other context about the feature request here.
+```
+
+**`.github/PULL_REQUEST_TEMPLATE.md`**:
+
+```markdown
+## Summary
+
+<!-- What does this PR do? Why? -->
+
+## Changes
+
+<!-- Bullet list of the specific changes made -->
+
+## Test plan
+
+- [ ] `dotnet build -c Release` passes with zero warnings
+- [ ] `dotnet test` passes
+- [ ] `dotnet Build.cs format check` passes (CSharpier + dotnet format)
+- [ ] Affected docs, samples, or README were updated when public behavior changed
+- [ ] Manual validation was completed when the change touched a UI, CLI, or runtime workflow
+
+## Related issues
+
+<!-- Fixes #123, Closes #456 -->
+```
+
+### 1.17a Optional Loom-managed assigned issue automation
+
+If the user wants the scaffolded repository to accept Loom-managed assigned work automatically, add these files:
+
+- `.github/ISSUE_TEMPLATE/package_api_integration.yml`
+- `docs/issue-automation.md`
+
+**`.github/ISSUE_TEMPLATE/package_api_integration.yml`**:
+
+```yaml
+name: Package API integration
+description: Request Loom-managed adoption of a package API from NuGet, GitHub Packages, or another registry, or an external client SDK.
+title: "[INTEGRATION] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when package or client integration work should enter Loom's research-to-dev pipeline.
+
+        To let Loom pick the issue up automatically:
+        - assign it to the GitHub user Loom is watching
+        - keep assigned-issue automation enabled in Loom
+        - keep the package source, package identifier, package version, and API surface fields intact so the route is deterministic
+  - type: dropdown
+    id: package-source
+    attributes:
+      label: Package source
+      description: Identify the registry or package source Loom should account for during research and implementation.
+      options:
+        - NuGet
+        - GitHub Packages
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: automation-route
+    attributes:
+      label: Automation route
+      description: Loom reads this value directly from the issue body.
+      options:
+        - research-to-dev
+    validations:
+      required: true
+  - type: input
+    id: package-id
+    attributes:
+      label: Package identifier
+      description: Use the package ID or registry identifier Loom should adopt.
+      placeholder: Contoso.Client
+    validations:
+      required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      placeholder: 5.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: api-surface
+    attributes:
+      label: API surface to adopt
+      description: Call out the concrete client APIs, interfaces, or entry points Loom should integrate.
+      placeholder: Replace the current transport bootstrap with Awesome.Client.StreamingSession and the new tool-call API.
+    validations:
+      required: true
+  - type: textarea
+    id: affected-areas
+    attributes:
+      label: Affected areas
+      description: List the main projects, services, UI flows, or workflows this integration will touch.
+      placeholder: Agents runtime, SDK provider, model routing tests, assigned issue dashboard.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: Define the user-visible and technical outcomes Loom should verify.
+      placeholder: |
+        - New package API is used end to end
+        - Existing issue automation and PR flow still work
+        - Draft PR links the issue and passes review plus verification
+    validations:
+      required: true
+  - type: checkboxes
+    id: execution-shape
+    attributes:
+      label: Expected stages
+      description: Confirm that this work should go through the full pipeline.
+      options:
+        - label: Research is required before implementation.
+          required: true
+        - label: Architectural design is required before implementation.
+          required: true
+        - label: Automated review and verification should run before human merge review.
+          required: true
+```
+
+**`docs/issue-automation.md`**:
+
+```markdown
+# Assigned Issue Automation
+
+Loom picks work up only when the repository is registered locally, GitHub auth is configured, assigned-issue pickup is enabled, and the issue is assigned to the GitHub login Loom is watching.
+
+## Prerequisites
+
+1. Register the repository in Loom.
+2. Configure GitHub credentials in Loom.
+3. Enable assigned-issue pickup in Monitoring.
+4. Leave the assignee override blank to use the authenticated GitHub user, or set the exact login Loom should watch.
+
+## Intake Contract
+
+Use the package API integration form for deterministic package or SDK adoption work. Preserve the `Automation route`, `Package source`, `Package identifier`, `Package version`, and `API surface to adopt` fields.
+
+## Git Conventions
+
+- feature work uses `feature/...` branches
+- bug fixes use `fix/...` branches
+- issue-linked work includes the issue number in the branch name
+- direct issue work opens a draft PR, links the issue, and keeps review plus verification on the same PR head branch
+```
 
 ### 1.3a `.gitignore` additions
 
@@ -215,7 +672,7 @@ dotnet_diagnostic.CA1031.severity = suggestion
 
 ### 1.9a `codecov.yml` — Optional
 
-Codecov is optional for distributed applications. TUnit bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively — no additional coverage packages needed. See the App Guide Phase 1.9a for setup details.
+Codecov is optional for distributed applications. If the user wants it, include the optional `codecov.yml` shown above. TUnit bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively — no additional coverage packages are needed.
 
 ### 1.10a Solution file — Deferred to Phase 12
 
@@ -234,19 +691,26 @@ This document serves as the mandatory operational framework for all AI Agents (G
 
 To maintain a clean, machine-readable, and professional history, you must strictly adhere to the [Conventional Commits](https://www.conventionalcommits.org/) specification.
 
-* **Format:** \<type\>(\<optional scope\>): \<description\>
+* **Format:** \<type\>(\<scope\>): \<description\>
 * **The Imperative Mood:** Always use the imperative, present tense. Use "Add feature" instead of "Added feature" or "Adds feature."
 * **Case Sensitivity:** The type and scope must be strictly **lowercase**.
 * **Granularity:** If a task involves both a refactor and a new feature, you are required to split them into two distinct commits.
-* **Scope:** This must represent the specific module or component affected (e.g., auth, api, parser).
+* **Scope:** This is mandatory and must represent the specific module or component affected (e.g., repo, agents, routing, github).
+* **Authors:** Ensure that commits are authored by the authenticated user only; do not add co-authors.
+* **Branch Names:** Agent-created branches must use lowercase prefixes such as `feature/`, `fix/`, `chore/`, `docs/`, `refactor/`, `test/`, `perf/`, or `research/`.
+* **Issue Branches:** When a GitHub issue number exists, include it in the branch name, for example `feature/issue-123-add-oauth-provider`.
+* **PR Re-iteration:** Review, verification, and remediation passes must stay on the current PR head branch. Do not create a second branch for the same PR.
 
 | Type | Use Case | Example |
 | :---- | :---- | :---- |
 | **feat** | A new feature for the user. | feat(auth): add OAuth2 provider |
 | **fix** | A bug fix for the user. | fix(api): resolve null pointer in user-lookup |
+| **docs** | Documentation-only changes. | docs(automation): explain assigned issue prerequisites |
 | **refactor** | Code change that neither fixes a bug nor adds a feature. | refactor(db): flatten repository hierarchy |
 | **test** | Adding missing tests or correcting existing tests. | test(vault): add boundary checks for encryption |
 | **chore** | Updating build tasks, package manager configs, etc. | chore(deps): bump Newtonsoft.Json to 13.0.3 |
+| **ci** | CI workflow or automation pipeline changes. | ci(github): add release workflow validation |
+| **perf** | Performance improvements. | perf(parser): reduce tokenization allocations |
 | **tool** | Automation scripts or internal dev-tooling. | tool(automation): add C\# script for log rotation |
 
 ## **2\. Testing: The "Anti-Pollution" Mandate**

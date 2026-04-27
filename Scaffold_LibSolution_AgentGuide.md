@@ -73,14 +73,29 @@ dotnet format analyzers      # fix Roslyn analyzer violations
 
 Skipping this step is the single most common cause of post-scaffold "fix formatting" commits. CSharpier's Allman brace style and `dotnet format` naming rules will flag every generated file — format once up front and the CI `format` job passes green on the very first push.
 
-The first commit should happen **after Phase 1 is complete** (all root files created) **and after formatting**:
+### Branch and PR workflow
+
+Create a scoped branch before adding source changes:
+
+```shell
+git checkout -b feature/<scope>-<summary>
+# or: fix/<scope>-<summary>, docs/<scope>-<summary>, refactor/<scope>-<summary>,
+#     test/<scope>-<summary>, chore/<scope>-<summary>, perf/<scope>-<summary>,
+#     research/<scope>-<summary>
+```
+
+Use lowercase prefixes. When the work is tied to a GitHub issue, include the issue number in the branch name, for example `feature/issue-123-add-span-parser`.
+
+The first commit should happen **after Phase 1 is complete** (all root files created) **and after formatting**. If you need a single bootstrap commit before splitting follow-up work, keep it conventional:
 
 ```shell
 git add -A
-git commit -m "Initial scaffold"
+git commit -m "chore(repo): bootstrap initial scaffold"
 ```
 
-**Why**: MinVer computes versions from git tag distance — without a repo and at least one commit, `dotnet pack` fails. `.gitattributes` line-ending rules only apply to tracked files. The `Build.cs rename` validation step in Phase 13 also requires a working tree.
+After the first green push, open a **draft** pull request, link the related issue in the PR body when one exists (`Fixes #123`), and keep review, verification, and remediation commits on that same branch until the PR is ready for human merge review.
+
+**Why**: MinVer computes versions from git tag distance — without a repo and at least one commit, `dotnet pack` fails. `.gitattributes` line-ending rules only apply to tracked files. The `Build.cs rename` validation step in Phase 13 also requires a working tree. Draft PRs surface CI and review context early without forcing immediate merge review.
 
 ### Recommended commit strategy
 
@@ -93,15 +108,15 @@ git add .editorconfig .csharpierrc.json .gitattributes .gitignore .jscpd.json .m
   LICENSE SECURITY.md CONTRIBUTING.md AGENTS.md CHANGELOG.md \
     .github/FUNDING.yml .github/ISSUE_TEMPLATE/ .github/PULL_REQUEST_TEMPLATE.md \
     Icon.png README.md <LIBNAME>.slnx
-git commit -m "chore: root config and repository health files"
+git commit -m "chore(repo): add root config and repository health files"
 
 # Commit 2: Source projects and task runner (Phases 2–8, 10–11)
 git add src/ Build.cs benchmarks/
-git commit -m "chore: initial project structure and Build.cs task runner"
+git commit -m "chore(scaffold): add initial project structure and Build.cs task runner"
 
 # Commit 3: CI pipeline (Phase 9)
 git add .github/workflows/ .github/dependabot.yml
-git commit -m "ci: GitHub Actions workflow and Dependabot"
+git commit -m "ci(github): add Actions workflow and Dependabot"
 ```
 
 > **Note**: Phase 11b (seeding benchmark results) adds a fourth commit after benchmarks have been run locally.
@@ -461,19 +476,26 @@ This document serves as the mandatory operational framework for all AI Agents (G
 
 To maintain a clean, machine-readable, and professional history, you must strictly adhere to the [Conventional Commits](https://www.conventionalcommits.org/) specification.
 
-* **Format:** \<type\>(\<optional scope\>): \<description\>
+* **Format:** \<type\>(\<scope\>): \<description\>
 * **The Imperative Mood:** Always use the imperative, present tense. Use "Add feature" instead of "Added feature" or "Adds feature."
 * **Case Sensitivity:** The type and scope must be strictly **lowercase**.
 * **Granularity:** If a task involves both a refactor and a new feature, you are required to split them into two distinct commits.
-* **Scope:** This must represent the specific module or component affected (e.g., auth, api, parser).
+* **Scope:** This is mandatory and must represent the specific module or component affected (e.g., repo, agents, routing, github).
+* **Authors:** Ensure that commits are authored by the authenticated user only; do not add co-authors.
+* **Branch Names:** Agent-created branches must use lowercase prefixes such as `feature/`, `fix/`, `chore/`, `docs/`, `refactor/`, `test/`, `perf/`, or `research/`.
+* **Issue Branches:** When a GitHub issue number exists, include it in the branch name, for example `feature/issue-123-add-oauth-provider`.
+* **PR Re-iteration:** Review, verification, and remediation passes must stay on the current PR head branch. Do not create a second branch for the same PR.
 
 | Type | Use Case | Example |
 | :---- | :---- | :---- |
 | **feat** | A new feature for the user. | feat(auth): add OAuth2 provider |
 | **fix** | A bug fix for the user. | fix(api): resolve null pointer in user-lookup |
+| **docs** | Documentation-only changes. | docs(automation): explain assigned issue prerequisites |
 | **refactor** | Code change that neither fixes a bug nor adds a feature. | refactor(db): flatten repository hierarchy |
 | **test** | Adding missing tests or correcting existing tests. | test(vault): add boundary checks for encryption |
 | **chore** | Updating build tasks, package manager configs, etc. | chore(deps): bump Newtonsoft.Json to 13.0.3 |
+| **ci** | CI workflow or automation pipeline changes. | ci(github): add release workflow validation |
+| **perf** | Performance improvements. | perf(parser): reduce tokenization allocations |
 | **tool** | Automation scripts or internal dev-tooling. | tool(automation): add C\# script for log rotation |
 
 ## **2\. Testing: The "Anti-Pollution" Mandate**
@@ -610,9 +632,13 @@ Set `IDE0055.severity = none` in `.editorconfig`. CSharpier is authoritative for
 
 ---
 
+<a id="phase-1-17-issue-pr-templates"></a>
+
 ### 1.17 `.github/ISSUE_TEMPLATE/bug_report.md`, `feature_request.md`, and `PULL_REQUEST_TEMPLATE.md`
 
 Create three community health files that GitHub surfaces automatically to contributors.
+
+Push the branch and open a **draft** pull request after the first green build and test pass. Convert it from draft only after the checklist below is satisfied and the PR body links any related issue.
 
 **`.github/ISSUE_TEMPLATE/bug_report.md`**:
 
@@ -666,20 +692,147 @@ Add any other context about the feature request here.
 ```markdown
 ## Summary
 
-Brief description of the change and why it was made.
+<!-- What does this PR do? Why? -->
 
-## Checklist
+## Changes
+
+<!-- Bullet list of the specific changes made -->
+
+## Test plan
 
 - [ ] `dotnet build -c Release` passes with zero warnings
 - [ ] `dotnet test` passes
-- [ ] `dotnet csharpier check .` passes (formatting)
-- [ ] `dotnet format style --verify-no-changes` passes (naming/style)
-- [ ] `dotnet format analyzers --verify-no-changes` passes (Roslyn analyzers)
-- [ ] Public API changes are reflected in README (run `dotnet test` to auto-update)
-- [ ] Breaking changes are noted in the PR description
+- [ ] `dotnet Build.cs format check` passes (CSharpier + dotnet format)
+- [ ] Affected docs, samples, or README were updated when public behavior changed
+- [ ] Manual validation was completed when the change touched a UI, CLI, or runtime workflow
+
+## Related issues
+
+<!-- Fixes #123, Closes #456 -->
 ```
 
 **Why**: GitHub displays "This project doesn't have issue templates" in the new-issue dialog without these files. They lower the barrier for quality bug reports, signal an actively maintained repository, and ensure contributors run the required pre-PR checks.
+
+<a id="phase-1-17a-loom-issue-automation"></a>
+
+### 1.17a Optional Loom-managed assigned issue automation
+
+If the user wants the scaffolded repository to accept Loom-managed assigned work automatically, add two extra files and a short README section linking to them:
+
+- `.github/ISSUE_TEMPLATE/package_api_integration.yml`
+- `docs/issue-automation.md`
+
+This is optional. Do not add these files unless the user explicitly wants Loom-managed issue intake.
+
+The contract must preserve Loom's current intake rules:
+
+- The repository is registered in Loom, GitHub auth is configured, and assigned-issue pickup is enabled.
+- The issue is assigned to the GitHub login Loom is watching, either from GitHub itself or from Loom's create-issue flow.
+- Deterministic package and SDK adoption work uses structured `Automation route`, `Package source`, `Package identifier`, `Package version`, and `API surface to adopt` fields.
+- Direct issue work opens a draft PR, links the issue, and keeps review, verification, and remediation passes on the same PR head branch.
+
+**`.github/ISSUE_TEMPLATE/package_api_integration.yml`**:
+
+```yaml
+name: Package API integration
+description: Request Loom-managed adoption of a package API from NuGet, GitHub Packages, or another registry, or an external client SDK.
+title: "[INTEGRATION] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when package or client integration work should enter Loom's research-to-dev pipeline.
+
+        To let Loom pick the issue up automatically:
+        - assign it to the GitHub user Loom is watching
+        - keep assigned-issue automation enabled in Loom
+        - keep the package source, package identifier, package version, and API surface fields intact so the route is deterministic
+  - type: dropdown
+    id: package-source
+    attributes:
+      label: Package source
+      description: Identify the registry or package source Loom should account for during research and implementation.
+      options:
+        - NuGet
+        - GitHub Packages
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: automation-route
+    attributes:
+      label: Automation route
+      description: Loom reads this value directly from the issue body.
+      options:
+        - research-to-dev
+    validations:
+      required: true
+  - type: input
+    id: package-id
+    attributes:
+      label: Package identifier
+      description: Use the package ID or registry identifier Loom should adopt.
+      placeholder: Contoso.Client
+    validations:
+      required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      placeholder: 5.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: api-surface
+    attributes:
+      label: API surface to adopt
+      description: Call out the concrete client APIs, interfaces, or entry points Loom should integrate.
+      placeholder: Replace the current transport bootstrap with Awesome.Client.StreamingSession and the new tool-call API.
+    validations:
+      required: true
+  - type: textarea
+    id: affected-areas
+    attributes:
+      label: Affected areas
+      description: List the main projects, services, UI flows, or workflows this integration will touch.
+      placeholder: Agents runtime, SDK provider, model routing tests, assigned issue dashboard.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: Define the user-visible and technical outcomes Loom should verify.
+      placeholder: |
+        - New package API is used end to end
+        - Existing issue automation and PR flow still work
+        - Draft PR links the issue and passes review plus verification
+    validations:
+      required: true
+  - type: checkboxes
+    id: execution-shape
+    attributes:
+      label: Expected stages
+      description: Confirm that this work should go through the full pipeline.
+      options:
+        - label: Research is required before implementation.
+          required: true
+        - label: Architectural design is required before implementation.
+          required: true
+        - label: Automated review and verification should run before human merge review.
+          required: true
+```
+
+**`docs/issue-automation.md`** should document:
+
+- prerequisites: repo registered in Loom, GitHub auth configured, assigned-issue pickup enabled, watched login aligned
+- how issues opened from Loom inherit watched-login assignment
+- the deterministic intake contract for package and SDK adoption work
+- routing outcomes for direct issue work versus research-to-dev work
+- Git conventions: `feature/...` or `fix/...` branches, issue-linked branch names, scoped conventional commits, and draft PR follow-up on the same branch
+- operational notes: only open assigned issues are picked up, the dashboard is the source of truth, and review or verification passes must not fork a second PR branch
 
 ---
 
