@@ -665,7 +665,7 @@ The `.slnx` for a 100-project solution requires solution folders and cannot be w
 
 ### 1.13a `AGENTS.md`
 
-Create this file at the repository root exactly as shown below so every scaffolded repository carries the same agent operating contract from commit one:
+Create this file at the repository root using the full template below, or reuse the user's existing stronger house-standard `AGENTS.md` when one already exists (for example an ArcNET-style contract). Do **not** replace it with a short placeholder note about repo layout or common commands:
 
 ````markdown
 # **🛠 Universal AI Agent Standards & Repository Health**
@@ -715,8 +715,9 @@ We prioritize **quality and logical failure paths** over coverage metrics. You a
 * **NuGet Integration:** Use the \#:package directive at the top of the file to manage dependencies.
 * **No Boilerplate:** Do not use namespace, class Program, or static void Main. Write logic directly using Top-Level Statements.
 * **Portability:** Use Path.Combine or forward slashes. Scripts must be execution-ready on Windows, macOS, and Linux without modification.
+* **Option Forwarding:** When invoking a file-based app and forwarding option-style args to the script, insert `--` after the script file. *Correct:* `dotnet run Build.cs -- test -c Release`. *Incorrect:* `dotnet run Build.cs test -c Release` because the outer `dotnet run` consumes `-c`.
 * **Example Structure:**
-  \#\!/usr/bin/env dotnet run
+  \#\!/usr/bin/env dotnet
   \#:package Newtonsoft.Json@13.0.3
   \#:package Spectre.Console@0.49.1
 
@@ -747,12 +748,15 @@ Before finalizing any output, the Agent must perform an internal "Pre-Flight Che
 1. **Logic Check:** Does the generated test actually catch a logic error, or is it just mocking a call?
 2. **Script Check:** Is this automation a .cs file? If it is .ps1 or .sh, it must be converted.
 3. **Syntax Check:** Am I using the field keyword, \[\] collections, and Primary Constructors?
-4. **Commit Check:** Is my proposed commit message formatted as type(scope): description?
+4. **Build.cs Arg Check:** If I documented or invoked `Build.cs` with forwarded option-style args, did I include `--` after `Build.cs`?
+5. **Commit Check:** Is my proposed commit message formatted as type(scope): description?
 
 **Failure to comply:** If an Agent is informed it has violated these rules, it must immediately revert the offending code and provide a compliant correction.
 ````
 
 **Why**: This gives every scaffolded repository a consistent root-level agent contract covering commits, testing quality, automation, modern C# idioms, and self-correction expectations.
+
+**Agent note**: A weak `AGENTS.md` is a scaffold bug. Copy this full contract, or adapt the user's stronger house standard to the new repository. Never downshift it into a minimal "notes" stub.
 
 ### 1.14a `CHANGELOG.md`
 
@@ -1754,6 +1758,8 @@ Application-specific commands (no pack or NuGet publish commands in an applicati
 
 ### `Build.cs` (repo root)
 
+**Critical pitfall**: If any forwarded command arguments begin with `-` or `--` (for example `-c`, `--no-build`, `-o`, or `--verbosity`), keep the `--` separator after `Build.cs`. `dotnet run Build.cs test -c Release` is wrong because the outer `dotnet run` consumes `-c`.
+
 ```csharp
 #!/usr/bin/env dotnet
 // Task runner for <APPNAME>
@@ -2475,6 +2481,7 @@ Before declaring the scaffold complete, verify:
 - [ ] `dotnet run Build.cs build Release` passes with zero warnings (CSharpier.MsBuild checks formatting automatically)
 - [ ] `dotnet run Build.cs -- test -c Debug` passes (all test projects)
 - [ ] `dotnet run Build.cs -- test -c Release` passes
+- [ ] README, CONTRIBUTING, AGENTS, and workflow commands that forward option-style args to `Build.cs` use the `dotnet run Build.cs -- ...` form
 - [ ] `dotnet run Build.cs coverage` writes Cobertura XML to `artifacts/TestResults/`
 - [ ] `dotnet run Build.cs format check` passes (runs both CSharpier + dotnet format)
 
