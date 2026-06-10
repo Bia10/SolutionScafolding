@@ -433,14 +433,12 @@ Thank you for considering contributing!
 ## How to Contribute
 
 1. Fork the repository and create a feature branch from `main`.
-2. Run `dotnet tool restore` to install local tools (CSharpier).
+2. Run `dotnet run Build.cs format` to restore local tools (CSharpier + dotnet-coverage) and normalize formatting.
 3. Ensure your code passes all checks:
    ```shell
-   dotnet build -c Release
-   dotnet test
-   dotnet csharpier check .
-   dotnet format style --verify-no-changes
-   dotnet format analyzers --verify-no-changes
+   dotnet run Build.cs build Release
+   dotnet run Build.cs -- test -c Release
+   dotnet run Build.cs format check
    ```
 ````
 
@@ -450,7 +448,7 @@ Thank you for considering contributing!
 
 This project enforces formatting via **CSharpier** (opinionated C# formatter) and **`dotnet format`** (code style analyzers). CI will reject PRs with formatting violations.
 
-- **Auto-format before committing**: `dotnet csharpier format .` first (fixes whitespace/brace style), then `dotnet format style && dotnet format analyzers` (fixes naming/usings). **Order matters**: always run CSharpier first. Never run bare `dotnet format` — the `whitespace` sub-check overwrites CSharpier's Allman-style brace formatting.
+- **Auto-format before committing**: run `dotnet run Build.cs format`, which restores local tools, runs CSharpier first, then runs `dotnet format style` and `dotnet format analyzers` project-by-project. Never run bare `dotnet format` — the `whitespace` sub-check overwrites CSharpier's Allman-style brace formatting.
 - IDE integration: Install the CSharpier extension for [VS Code](https://marketplace.visualstudio.com/items?itemName=csharpier.csharpier-vscode), [Visual Studio](https://marketplace.visualstudio.com/items?itemName=csharpier.CSharpier), or [Rider](https://plugins.jetbrains.com/plugin/18243-csharpier) for format-on-save.
 
 ## Reporting Issues
@@ -700,9 +698,9 @@ Add any other context about the feature request here.
 
 ## Test plan
 
-- [ ] `dotnet build -c Release` passes with zero warnings
-- [ ] `dotnet test` passes
-- [ ] `dotnet Build.cs format check` passes (CSharpier + dotnet format)
+- [ ] `dotnet run Build.cs build Release` passes with zero warnings
+- [ ] `dotnet run Build.cs -- test -c Release` passes
+- [ ] `dotnet run Build.cs format check` passes (CSharpier + dotnet format)
 - [ ] Affected docs, samples, or README were updated when public behavior changed
 - [ ] Manual validation was completed when the change touched a UI, CLI, or runtime workflow
 
@@ -898,7 +896,7 @@ Benchmarks.
 
 ##### TestBench Benchmark Results
 
-###### Results will be populated here after running `dotnet Build.cs comparison-bench` then `dotnet test`
+###### Results will be populated here after running `dotnet run Build.cs comparison-bench` then `dotnet run Build.cs -- test -c Release`
 
 ## Example Catalogue
 
@@ -1807,7 +1805,7 @@ Each `ReadMeTest_<Name>()` method acts as both a **test** (proves the example co
 
 ### 7.2 `src/<LIBNAME>.Benchmarks/Program.cs`
 
-Entry point for `dotnet Build.cs bench`. Without this file the `<OutputType>Exe</OutputType>` project will not compile.
+Entry point for `dotnet run Build.cs bench`. Without this file the `<OutputType>Exe</OutputType>` project will not compile.
 
 ```csharp
 using BenchmarkDotNet.Running;
@@ -1907,7 +1905,7 @@ using BenchmarkDotNet.Exporters;
 using BenchmarkDotNet.Loggers;
 using BenchmarkDotNet.Running;
 
-// Usage (via task runner): dotnet Build.cs comparison-bench
+// Usage (via task runner): dotnet run Build.cs comparison-bench
 // Direct:                  dotnet run -c Release -- run
 if (args is not ["run"])
 {
@@ -2045,101 +2043,84 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
         with:
           global-json-file: global.json
 
-      - name: Restore dependencies
-        run: dotnet restore
-
       - name: Build
-        run: dotnet build -c ${{ matrix.configuration }} --no-restore
+        run: dotnet run Build.cs build ${{ matrix.configuration }}
 
       - name: Test
-        run: dotnet test -c ${{ matrix.configuration }} --no-build --verbosity normal
+        run: dotnet run Build.cs -- test -c ${{ matrix.configuration }} --no-build --verbosity normal
 
   coverage:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
         with:
           global-json-file: global.json
 
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build -c Release --no-restore
-
-      - name: Install dotnet-coverage
-        run: dotnet tool install --global dotnet-coverage
-
       - name: Collect coverage
-        run: |
-          dotnet-coverage collect --output TestResults/coverage.test.xml --output-format cobertura -- dotnet run --project src/<LIBNAME>.Test/<LIBNAME>.Test.csproj -c Release --no-build -- --no-ansi
-          dotnet-coverage collect --output TestResults/coverage.doctest.xml --output-format cobertura -- dotnet run --project src/<LIBNAME>.DocTest/<LIBNAME>.DocTest.csproj -c Release --no-build -- --no-ansi
+        run: dotnet run Build.cs coverage
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          files: TestResults/coverage.test.xml,TestResults/coverage.doctest.xml
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ env.CODECOV_TOKEN }}
+          files: artifacts/TestResults/*.coverage.cobertura.xml
+          disable_search: true
+          fail_ci_if_error: true
+          verbose: true
 
   format:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Setup .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
         with:
           global-json-file: global.json
-      - name: Restore tools
-        run: dotnet tool restore
-      - name: CSharpier verify no changes
-        run: dotnet csharpier check .
-      - name: Format style verify no changes
-        run: dotnet format style --verify-no-changes
-      - name: Format analyzers verify no changes
-        run: dotnet format analyzers --verify-no-changes
+      - name: Verify formatting
+        run: dotnet run Build.cs format check
 
   pack:
     runs-on: windows-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0 # full history for MinVer
       - name: Create tag (to set version)
         if: ${{ github.event.inputs.version != '' && github.actor == '<AUTHOR>' }}
         run: git tag v${{ github.event.inputs.version }}
       - name: Setup .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
         with:
           global-json-file: global.json
       - name: Pack NuGet package
-        run: dotnet pack -c Release --output ${{ env.NuGetDirectory }}
+        run: dotnet run Build.cs -- pack Release -o ${{ env.NuGetDirectory }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nuget
@@ -2157,17 +2138,17 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@6c3c2f2c1c457b00c10c4848d6f5491db3b629df # v2.18.0
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Download nuget packages
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: nuget
           path: ${{ env.NuGetDirectory }}
       - name: Setup .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
         with:
           global-json-file: global.json
       - name: Push packages
@@ -2196,12 +2177,12 @@ git ls-remote --tags https://github.com/actions/checkout | grep "refs/tags/v6$"
 
 | Placeholder in workflow       | Action                        | Pinned version | SHA                                        | Last verified |
 | ----------------------------- | ----------------------------- | -------------- | ------------------------------------------ | ------------- |
-| `step-security/harden-runner` | `step-security/harden-runner` | v2.18.0        | `6c3c2f2c1c457b00c10c4848d6f5491db3b629df` | 2026-04-17    |
-| `actions/checkout`            | `actions/checkout`            | v6.0.2         | `de0fac2e4500dabe0009e67214ff5f5447ce83dd` | 2026-04-17    |
-| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5.2.0         | `c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7` | 2026-04-17    |
-| `codecov/codecov-action`      | `codecov/codecov-action`      | v6.0.0         | `57e3a136b779b570ffcdbf80b3bdc90e7fab3de2` | 2026-03-27    |
-| `actions/upload-artifact`     | `actions/upload-artifact`     | v7.0.1         | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | 2026-04-17    |
-| `actions/download-artifact`   | `actions/download-artifact`   | v8.0.1         | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-04-17    |
+| `step-security/harden-runner` | `step-security/harden-runner` | v2.19.4        | `9af89fc71515a100421586dfdb3dc9c984fbf411` | 2026-06-10    |
+| `actions/checkout`            | `actions/checkout`            | v6.0.3         | `df4cb1c069e1874edd31b4311f1884172cec0e10` | 2026-06-10    |
+| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5.3.0         | `9a946fdbd5fb07b82b2f5a4466058b876ab72bb2` | 2026-06-10    |
+| `codecov/codecov-action`      | `codecov/codecov-action`      | v7.0.0         | `fb8b3582c8e4def4969c97caa2f19720cb33a72f` | 2026-06-10    |
+| `actions/upload-artifact`     | `actions/upload-artifact`     | v7.0.1         | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | 2026-06-10    |
+| `actions/download-artifact`   | `actions/download-artifact`   | v8.0.1         | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-06-10    |
 
 If the table above is empty at scaffold time, the agent **must** use version tags as a temporary fallback (e.g., `actions/checkout@v6`) and add a `TODO:` comment on each line: `# TODO: Pin to full SHA before merging to main`. The Phase 13 validation checklist will catch these.
 
@@ -2232,7 +2213,7 @@ updates:
 
 ## Phase 10: `Build.cs` — Task Runner at Repo Root
 
-A single **.NET 10 file-based app** at the repo root replaces any collection of shell scripts. File-based apps require no `.csproj` — they are compiled and run directly via `dotnet Build.cs`, and work on Windows, Linux, and macOS with any .NET 10 SDK installation.
+A single **.NET 10 file-based app** at the repo root replaces any collection of shell scripts. File-based apps require no `.csproj` — they are compiled and run via `dotnet run Build.cs`, and work on Windows, Linux, and macOS with any .NET 10 SDK installation.
 
 > **Hard requirement**: `Build.cs` file-based apps require the **.NET 10 SDK** (the feature was introduced in .NET 10). If your repository must be buildable with an older SDK (e.g., because it multi-targets `net8.0` only and your CI does not install the .NET 10 SDK), this approach is **not usable** — fall back to PowerShell Core (`.ps1`) or a `Makefile`.
 
@@ -2241,7 +2222,7 @@ A single **.NET 10 file-based app** at the repo root replaces any collection of 
 | Concern         | Shell scripts (multiple files)       | `Build.cs` (1 file)                       |
 | --------------- | ------------------------------------ | ----------------------------------------- |
 | Cross-platform  | Requires `pwsh` or `bash` separately | Works anywhere with the .NET 10 SDK       |
-| Discoverability | Scattered across the repo, no help   | `dotnet Build.cs help` lists all commands |
+| Discoverability | Scattered across the repo, no help   | `dotnet run Build.cs help` lists all commands |
 | IDE support     | Limited                              | Full IntelliSense, compile-time checks    |
 | Type safety     | Silent string-concat bugs            | Compiler catches errors                   |
 | AOT publish     | N/A                                  | `dotnet publish Build.cs` → native binary |
@@ -2256,9 +2237,9 @@ To produce a true standalone binary (e.g., for CI runners): remove `#:property P
 
 ```
 # From repo root (standard usage — works on Windows, Linux, macOS):
-dotnet Build.cs bench
-dotnet Build.cs pack
-dotnet Build.cs rename CudaSharp MyNewLib
+dotnet run Build.cs bench
+dotnet run Build.cs pack
+dotnet run Build.cs rename CudaSharp MyNewLib
 
 # Unix — make executable once, then invoke directly:
 chmod +x Build.cs
@@ -2283,7 +2264,7 @@ Place `Build.cs` at the **repo root**, one level above all `.csproj` files. Per 
 ```csharp
 #!/usr/bin/env dotnet
 // Task runner for the repository.
-// Usage: dotnet Build.cs <command> [args]
+// Usage: dotnet run Build.cs <command> [args]
 // Requires: .NET 10 SDK (file-based apps are a .NET 10 feature).
 // Invoke from any directory — [CallerFilePath] locates the repo root at compile time.
 
@@ -2291,111 +2272,316 @@ Place `Build.cs` at the **repo root**, one level above all `.csproj` files. Per 
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 var repoRoot = RepoRoot();
-var cmd = args.Length > 0 ? args[0] : "help";
+var solutionPath = Path.Combine(repoRoot, "<LIBNAME>.slnx");
+var coverageOutputDirectory = Path.Combine(repoRoot, "artifacts", "TestResults");
+var nugetOutputDirectory = Path.Combine(repoRoot, "artifacts", "nuget");
+var docTestProject = Path.Combine(repoRoot, "src", "<LIBNAME>.DocTest", "<LIBNAME>.DocTest.csproj");
+var command = args.FirstOrDefault()?.ToLowerInvariant() ?? "help";
+var commandArgs = args.Skip(1).ToArray();
 
-switch (cmd)
+switch (command)
 {
+    case "build":
+        var buildConfig = commandArgs.FirstOrDefault(a => !a.StartsWith('-')) ?? "Debug";
+        Run("dotnet", ["build", solutionPath, "-c", buildConfig], repoRoot);
+        return 0;
+
+    case "test":
+        Run("dotnet", ["test", "--solution", solutionPath, .. commandArgs], repoRoot);
+        return 0;
+
+    case "coverage":
+        Run("dotnet", ["tool", "restore"], repoRoot);
+        Directory.CreateDirectory(coverageOutputDirectory);
+        Run("dotnet", ["build", solutionPath, "-c", "Release"], repoRoot);
+        foreach (var testProject in FindRunnableTestProjects(repoRoot, docTestProject))
+        {
+            CollectCoverage(repoRoot, testProject, coverageOutputDirectory);
+        }
+        return 0;
+
     case "bench":
+        string[] benchmarkArgs = commandArgs.Length == 0 ? ["--filter", "*", "--join"] : commandArgs;
         Run("dotnet",
-            "run --project src/<LIBNAME>.Benchmarks/<LIBNAME>.Benchmarks.csproj"
-            + " -c Release -- --filter \"*\" --join",
+            [
+                "run",
+                "--project",
+                Path.Combine("src", "<LIBNAME>.Benchmarks", "<LIBNAME>.Benchmarks.csproj"),
+                "-c",
+                "Release",
+                "--",
+                .. benchmarkArgs,
+            ],
             repoRoot);
-        break;
+        return 0;
 
     case "comparison-bench":
         Run("dotnet",
-            "run --project src/<LIBNAME>.ComparisonBenchmarks/<LIBNAME>.ComparisonBenchmarks.csproj"
-            + " -c Release -- run",
+            [
+                "run",
+                "--project",
+                Path.Combine("src", "<LIBNAME>.ComparisonBenchmarks", "<LIBNAME>.ComparisonBenchmarks.csproj"),
+                "-c",
+                "Release",
+                "--",
+                "run",
+                .. commandArgs,
+            ],
             repoRoot);
-        break;
+        return 0;
 
     case "disasm":
+        string[] disasmArgs = commandArgs.Length == 0 ? ["--filter", "*<LIBNAME>*", "--disasm"] : commandArgs;
         Run("dotnet",
-            "run --project src/<LIBNAME>.Benchmarks/<LIBNAME>.Benchmarks.csproj"
-            + " -c Release -- --filter \"*<LIBNAME>*\" --disasm",
+            [
+                "run",
+                "--project",
+                Path.Combine("src", "<LIBNAME>.Benchmarks", "<LIBNAME>.Benchmarks.csproj"),
+                "-c",
+                "Release",
+                "--",
+                .. disasmArgs,
+            ],
             repoRoot);
-        break;
+        return 0;
 
     case "pack":
-        // Solution-wide pack: non-packable projects have <IsPackable>false</IsPackable>
-        // so only the library (and generator, if present) produce .nupkg files.
-        Run("dotnet",
-            "pack -c Release",
-            repoRoot);
-        break;
+        Pack(commandArgs);
+        return 0;
 
     case "publish-tester":
-        var rid = args.Length > 1 ? args[1] : System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
-        Run("dotnet",
-            $"publish src/<LIBNAME>.Tester/<LIBNAME>.Tester.csproj -c Release -r {rid} --self-contained",
-            repoRoot);
-        break;
-
-    case "prettier":
-        // Requires Node.js / npx on PATH.
-        // Prettier respects .editorconfig for indent sizes since v2.0;
-        // no separate .prettierrc is needed unless you want to override
-        // specific Prettier behaviors beyond what .editorconfig covers.
-        Run("npx",
-            "prettier --write \"**/*.{yml,yaml,json,md}\" --ignore-path .gitignore",
-            repoRoot);
-        break;
+        PublishTester(commandArgs);
+        return 0;
 
     case "format":
-        // CSharpier: opinionated whitespace/formatting
-        // dotnet format style + analyzers: code style (naming, usings, etc.)
-        // NOTE: never run bare "dotnet format" — the whitespace sub-check conflicts with CSharpier's Allman brace style.
-        var verify = args.Length > 1 && args[1] == "check";
-        Run("dotnet", "tool restore", repoRoot);
-        Run("dotnet", verify ? "csharpier check ." : "csharpier format .", repoRoot);
-        Run("dotnet", verify ? "format style --verify-no-changes" : "format style", repoRoot);
-        Run("dotnet", verify ? "format analyzers --verify-no-changes" : "format analyzers", repoRoot);
-        break;
+        Format(commandArgs);
+        return 0;
+
+    case "prettier":
+        Run("npx",
+            [
+                "prettier",
+                "--write",
+                "**/*.{yml,yaml,json,md}",
+                "--ignore-path",
+                ".gitignore",
+            ],
+            repoRoot);
+        return 0;
+
+    case "clean":
+        DeleteIfPresent(Path.Combine(repoRoot, "artifacts"));
+        DeleteIfPresent(Path.Combine(repoRoot, "publish"));
+        Run("dotnet", ["clean", solutionPath], repoRoot);
+        return 0;
 
     case "rename":
-        if (args.Length < 3)
+        if (commandArgs.Length < 2)
         {
-            Console.Error.WriteLine("Usage: dotnet Build.cs rename <OldName> <NewName>");
+            Console.Error.WriteLine("Usage: dotnet run Build.cs rename <OldName> <NewName>");
             return 1;
         }
-        RenameAll(repoRoot, args[1], args[2]);
-        break;
+
+        RenameAll(repoRoot, commandArgs[0], commandArgs[1]);
+        return 0;
 
     default:
-        Console.WriteLine("""
-            Usage: dotnet Build.cs <command>
-
-            Commands:
-              bench                     Run BenchmarkDotNet benchmarks
-              comparison-bench          Run comparison benchmarks (writes to benchmarks/)
-              disasm                    Inspect JIT disassembly via BDN disassembler
-              pack                      Pack NuGet package locally
-              publish-tester [RID]      Publish tester app (defaults to current platform RID)
-              format [check]            Format C# (CSharpier) + code style (dotnet format); 'check' verifies only
-              prettier                  Format YAML/Markdown/JSON via Prettier (requires Node)
-              rename <OldName> <New>    Rename template throughout repository
-            """);
-        break;
+        Help();
+        return 0;
 }
 
-return 0;
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-static void Run(string exe, string arguments, string workingDir)
+void Pack(string[] arguments)
 {
-    var psi = new ProcessStartInfo(exe, arguments)
+    var nextArgumentIndex = 0;
+    var packConfig =
+        arguments.ElementAtOrDefault(nextArgumentIndex) is { } configArg && !configArg.StartsWith('-')
+            ? arguments[nextArgumentIndex++]
+            : "Release";
+    var extraPackArgs = arguments.Skip(nextArgumentIndex).ToArray();
+    var hasExplicitOutput = extraPackArgs.Any(static arg =>
+        string.Equals(arg, "-o", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(arg, "--output", StringComparison.OrdinalIgnoreCase)
+    );
+
+    List<string> packArgs = ["pack", solutionPath, "-c", packConfig];
+    if (!hasExplicitOutput)
     {
-        WorkingDirectory = workingDir,
+        packArgs.Add("-o");
+        packArgs.Add(nugetOutputDirectory);
+    }
+
+    packArgs.AddRange(extraPackArgs);
+    Run("dotnet", packArgs, repoRoot);
+}
+
+void PublishTester(string[] arguments)
+{
+    var nextArgumentIndex = 0;
+    var rid =
+        arguments.ElementAtOrDefault(nextArgumentIndex) is { } ridArg && !ridArg.StartsWith('-')
+            ? arguments[nextArgumentIndex++]
+            : RuntimeInformation.RuntimeIdentifier;
+    var publishConfig =
+        arguments.ElementAtOrDefault(nextArgumentIndex) is { } configArg && !configArg.StartsWith('-')
+            ? arguments[nextArgumentIndex++]
+            : "Release";
+    var extraPublishArgs = arguments.Skip(nextArgumentIndex).ToArray();
+    var hasExplicitOutput = extraPublishArgs.Any(static arg =>
+        string.Equals(arg, "-o", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(arg, "--output", StringComparison.OrdinalIgnoreCase)
+    );
+
+    List<string> publishArgs =
+    [
+        "publish",
+        Path.Combine("src", "<LIBNAME>.Tester", "<LIBNAME>.Tester.csproj"),
+        "-c",
+        publishConfig,
+        "-r",
+        rid,
+        "--self-contained",
+    ];
+
+    if (!hasExplicitOutput)
+    {
+        publishArgs.Add("-o");
+        publishArgs.Add(Path.Combine("publish", "tester", rid));
+    }
+
+    publishArgs.AddRange(extraPublishArgs);
+    Run("dotnet", publishArgs, repoRoot);
+}
+
+void Format(string[] arguments)
+{
+    var verify = arguments.Length > 0 && string.Equals(arguments[0], "check", StringComparison.OrdinalIgnoreCase);
+    Run("dotnet", ["tool", "restore"], repoRoot);
+    Run(
+        "dotnet",
+        verify ? ["tool", "run", "csharpier", "--", "check", "."] : ["tool", "run", "csharpier", "--", "format", "."],
+        repoRoot
+    );
+
+    foreach (var project in ProjectFiles(repoRoot))
+    {
+        var projectRelativePath = NormalizeRelativePath(Path.GetRelativePath(repoRoot, project));
+        string[] extraFormatArgs = verify ? ["--no-restore", "--verify-no-changes"] : ["--no-restore"];
+        Run("dotnet", ["format", "style", projectRelativePath, .. extraFormatArgs], repoRoot);
+        Run("dotnet", ["format", "analyzers", projectRelativePath, .. extraFormatArgs], repoRoot);
+    }
+}
+
+void Help()
+{
+    Console.WriteLine(
+        @"Usage: dotnet run Build.cs <command> [args]
+       dotnet run Build.cs -- <command> [args]   (use -- when forwarding option-style args)
+
+Commands:
+    build [config]                         Build the solution (default: Debug)
+    test [args]                            Run solution tests with forwarded dotnet test args
+    coverage                               Collect Cobertura coverage into artifacts/TestResults/
+    bench [args]                           Run BenchmarkDotNet benchmarks
+    comparison-bench [args]                Run comparison benchmarks and write to benchmarks/
+    disasm [args]                          Inspect JIT disassembly via BenchmarkDotNet
+    pack [config] [args]                   Pack NuGet artifacts (default output: artifacts/nuget)
+    publish-tester [rid] [config] [args]   Publish the tester app
+    format [check]                         Run CSharpier plus dotnet format style/analyzers
+    prettier                               Format YAML/Markdown/JSON via Prettier (requires Node)
+    clean                                  Delete artifacts and publish output, then clean the solution
+    rename <OldName> <NewName>             Rename template throughout repository
+    help                                   Show this command list"
+    );
+}
+
+static void DeleteIfPresent(string path)
+{
+    if (!Directory.Exists(path))
+        return;
+
+    Directory.Delete(path, recursive: true);
+    Console.WriteLine($"Deleted {path}");
+}
+
+static IEnumerable<string> ProjectFiles(string repoRoot) =>
+    Directory
+        .EnumerateFiles(repoRoot, "*.csproj", SearchOption.AllDirectories)
+        .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+        .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
+
+static IEnumerable<string> FindRunnableTestProjects(string repoRoot, string docTestProject)
+{
+    foreach (var testProject in Directory
+        .GetFiles(Path.Combine(repoRoot, "src"), "*.Test.csproj", SearchOption.AllDirectories)
+        .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+    {
+        yield return testProject;
+    }
+
+    if (File.Exists(docTestProject))
+    {
+        yield return docTestProject;
+    }
+}
+
+static void CollectCoverage(string repoRoot, string projectPath, string coverageOutputDirectory)
+{
+    var projectName = Path.GetFileNameWithoutExtension(projectPath);
+    var projectRelativePath = NormalizeRelativePath(Path.GetRelativePath(repoRoot, projectPath));
+    var outputPath = Path.Combine(coverageOutputDirectory, $"{projectName}.coverage.cobertura.xml");
+
+    Run("dotnet",
+        [
+            "dotnet-coverage",
+            "collect",
+            $"dotnet run --project {QuoteCommandValue(projectRelativePath)} -c Release --no-build --no-restore -- --no-ansi",
+            "--output",
+            outputPath,
+            "--output-format",
+            "cobertura",
+        ],
+        repoRoot);
+}
+
+static void Run(string executable, IEnumerable<string> arguments, string workingDirectory)
+{
+    var argumentList = arguments.ToArray();
+    Console.WriteLine();
+    Console.WriteLine($"> {executable} {string.Join(' ', argumentList.Select(EscapeArgument))}");
+
+    var processStartInfo = new ProcessStartInfo(executable)
+    {
+        WorkingDirectory = workingDirectory,
         UseShellExecute = false,
     };
-    using var p = Process.Start(psi) ?? throw new Exception($"Failed to start '{exe}'");
-    p.WaitForExit();
-    if (p.ExitCode != 0)
-        throw new Exception($"'{exe}' exited with code {p.ExitCode}");
+
+    foreach (var argument in argumentList)
+    {
+        processStartInfo.ArgumentList.Add(argument);
+    }
+
+    using var process = Process.Start(processStartInfo)
+        ?? throw new InvalidOperationException($"Failed to start '{executable}'.");
+    process.WaitForExit();
+    if (process.ExitCode != 0)
+    {
+        throw new InvalidOperationException(
+            $"Command failed with exit code {process.ExitCode}: {executable}");
+    }
 }
+
+static string EscapeArgument(string argument) =>
+    argument.Contains(' ', StringComparison.Ordinal) || argument.Contains('"', StringComparison.Ordinal)
+        ? $"\"{argument.Replace("\"", "\\\"", StringComparison.Ordinal)}\""
+        : argument;
+
+static string QuoteCommandValue(string value) =>
+    value.Contains(' ', StringComparison.Ordinal) ? $"\"{value}\"" : value;
+
+static string NormalizeRelativePath(string path) => path.Replace('\\', '/');
 
 static void RenameAll(string repoRoot, string oldName, string newName)
 {
@@ -2466,7 +2652,7 @@ benchmarks/
   .gitkeep
 ```
 
-The CI and `dotnet Build.cs comparison-bench` will populate `benchmarks/<MachineName>/TestBench.md` and `benchmarks/<MachineName>/Versions.txt` automatically. The author typically pre-commits results from their own machine so the README shows real data from day one.
+The CI and `dotnet run Build.cs comparison-bench` will populate `benchmarks/<MachineName>/TestBench.md` and `benchmarks/<MachineName>/Versions.txt` automatically. The author typically pre-commits results from their own machine so the README shows real data from day one.
 
 ---
 
@@ -2476,14 +2662,14 @@ This phase must be completed before Phase 13's validation checklist — the chec
 
 ```shell
 # 1. Build all projects first (required — comparison-bench runs in Release config)
-dotnet build -c Release
+dotnet run Build.cs build Release
 
 # 2. Run comparison benchmarks — writes to benchmarks/<MachineName>/TestBench.md
-dotnet Build.cs comparison-bench
+dotnet run Build.cs comparison-bench
 
 # 3. Run full test suite — ReadMeTest_UpdateBenchmarksInMarkdown embeds the
 #    benchmark tables and ReadMeTest_PublicApi embeds the public API into README.md
-dotnet test -c Release
+dotnet run Build.cs -- test -c Release
 ```
 
 After all three commands succeed:
@@ -2513,16 +2699,14 @@ After pushing the initial commit, configure these in the repository settings:
 
 Before declaring the scaffold complete, verify:
 
-- [ ] `dotnet tool restore` succeeds and `dotnet csharpier format .` + `dotnet format style` + `dotnet format analyzers` have been run locally (no pending formatting changes before the first push)
-- [ ] `dotnet build -c Debug` passes with zero warnings
-- [ ] `dotnet build -c Release` passes with zero warnings (CSharpier.MsBuild checks formatting automatically)
-- [ ] `dotnet test -c Debug` passes
-- [ ] `dotnet test -c Release` passes
-- [ ] `dotnet csharpier check .` passes (opinionated formatting)
-- [ ] `dotnet format style --verify-no-changes` passes (naming/style diagnostics)
-- [ ] `dotnet format analyzers --verify-no-changes` passes (Roslyn analyzers)
-- [ ] `dotnet Build.cs format check` passes (runs CSharpier + dotnet format style + analyzers)
-- [ ] `dotnet pack` produces a `.nupkg` and `.snupkg`
+- [ ] `dotnet run Build.cs format` succeeds and leaves no pending formatting changes before the first push
+- [ ] `dotnet run Build.cs build Debug` passes with zero warnings
+- [ ] `dotnet run Build.cs build Release` passes with zero warnings (CSharpier.MsBuild checks formatting automatically)
+- [ ] `dotnet run Build.cs -- test -c Debug` passes
+- [ ] `dotnet run Build.cs -- test -c Release` passes
+- [ ] `dotnet run Build.cs coverage` writes Cobertura XML to `artifacts/TestResults/`
+- [ ] `dotnet run Build.cs format check` passes (runs CSharpier + dotnet format style + analyzers)
+- [ ] `dotnet run Build.cs pack` produces a `.nupkg` and `.snupkg`
 - [ ] README contains the `Empty()` method body under `## Example`
 - [ ] `docs/PublicApi.md` exists and contains the public API snippet under `## Public API Reference` (auto-updated by `dotnet test`)
 - [ ] The benchmark result row in README shows `0.0004 ns` or similar (confirms BDN baseline was run)
@@ -2535,8 +2719,8 @@ Before declaring the scaffold complete, verify:
 - [ ] `.github/ISSUE_TEMPLATE/bug_report.md` and `feature_request.md` exist
 - [ ] `.github/PULL_REQUEST_TEMPLATE.md` exists
 - [ ] All `<LATEST_*>` package version placeholders have been resolved to real versions
-- [ ] `dotnet Build.cs help` prints the command list without errors (smoke test the task runner)
-- [ ] `dotnet Build.cs rename <LIBNAME> TestRename` runs without errors; revert with `dotnet Build.cs rename TestRename <LIBNAME>`
+- [ ] `dotnet run Build.cs help` prints the command list without errors (smoke test the task runner)
+- [ ] `dotnet run Build.cs rename <LIBNAME> TestRename` runs without errors; revert with `dotnet run Build.cs rename TestRename <LIBNAME>`
 - [ ] _(If `NEEDS_GENERATOR=true`)_ Generator project builds with `dotnet build src/<LIBNAME>.Generators/<LIBNAME>.Generators.csproj`
 - [ ] _(If `NEEDS_GENERATOR=true`)_ Generator tests pass: `dotnet test src/<LIBNAME>.Generators.Test/<LIBNAME>.Generators.Test.csproj`
 - [ ] _(If `NEEDS_GENERATOR=true`)_ Library `.csproj` has `<ProjectReference ... OutputItemType="Analyzer" ReferenceOutputAssembly="false" />` wiring the generator
