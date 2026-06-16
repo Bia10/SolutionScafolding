@@ -2858,6 +2858,28 @@ After all phases are complete, the repository contains exactly these files (subs
 
 ---
 
+## Optional parameters and nullability
+
+1. **Optional ≠ nullable.** `param = default` means callers may omit it; `T?` means the value may be null. Do not conflate the two contracts.
+
+2. **Do not add `= null` to avoid updating call sites.** If the dependency/value is actually required, make callers pass it and fix every compile error.
+
+3. **Nullable annotations are API contracts.** Use `T` for required non-null values, `T?` only when null is explicitly supported and tested.
+
+4. **Every nullable parameter creates a handling obligation.** If `ILogger? logger = null`, every implementation path must safely handle `null`; otherwise the API is lying.
+
+5. **Prefer overloads for convenience.** Use `DoThing()` delegating to `DoThing(requiredLogger)` or a well-defined default, instead of spreading null checks through the code.
+
+6. **Prefer Null Object/default implementations over null.** Example: use `NullLogger<T>.Instance` internally when “no logging” is a valid behavior.
+
+7. **Do not make services/dependencies optional by default.** Constructor-injected dependencies, loggers, clients, repositories, clocks, etc. should usually be required.
+
+8. **Optional parameter defaults are versioning hazards.** In C#, default values are baked into call sites; changing the default may not affect already-compiled callers.
+
+9. **Only use optional parameters for stable, obvious defaults.** Good examples: flags, timeouts, `CancellationToken cancellationToken = default`; bad examples: hidden dependencies or required business data.
+
+10. **When adding a parameter, decide deliberately:** required → update all call sites; truly optional → define exact default behavior; nullable → document and test null behavior.
+
 ## Anti-Patterns to Avoid
 
 1. **Do not use floating action tags** (`@v2`, `@main`). Always SHA-pin. Tags can be moved by maintainers.
