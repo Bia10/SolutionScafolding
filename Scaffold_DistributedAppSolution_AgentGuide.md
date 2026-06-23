@@ -401,143 +401,198 @@ Use GitHub Issues for bugs and feature requests.
 
 ### 1.13a `AGENTS.md`
 
-Create this as a standalone repository-root file using the full template below, or reuse the user's existing stronger house-standard `AGENTS.md` when one already exists (for example an ArcNET-style contract). It is a first-class repo contract, not part of `CONTRIBUTING.md`, issue reporting, or `.github/ISSUE_TEMPLATE` content. Do **not** replace it with a short placeholder note about repo layout or common commands:
+Create this as a standalone repository-root file using the context-budgeted house standard below, or reuse the user's existing stronger `AGENTS.md` when one already exists. It is a first-class repository contract, not part of `CONTRIBUTING.md`, issue reporting, or `.github/ISSUE_TEMPLATE` content. Do **not** replace it with a short placeholder note about repo layout or common commands.
+
+The template intentionally compresses the longer engineering standard into rules that agents can load every turn without drowning out the repository task. Keep project-specific architecture, runbooks, and deep domain notes in separate docs and link them from this file when needed.
 
 ````markdown
-# **🛠 Universal AI Agent Standards & Repository Health**
+# AI Agent Engineering Standards for Modern C# Repositories
 
-This document serves as the mandatory operational framework for all AI Agents (GitHub Copilot, Cursor, Codex, etc.) interacting with this repository. Adherence to these standards is required for all generated code, tests, scripts, and commits.
+This document is mandatory for AI agents, coding assistants, and automation that create or modify code in this repository. Its purpose is to prevent shallow implementations, fragile tests, unsafe automation, and changes that require immediate human rework.
 
-## **1\. Git Commit Standards: Conventional Commits**
+Use these terms precisely: **MUST** is mandatory, **MUST NOT** is prohibited, **SHOULD** is the default unless justified, and **MAY** is optional. A direct human instruction overrides this file unless it would break build correctness, security, data safety, or repository integrity. Repository configuration overrides this file when they conflict; call out the mismatch in the final response.
 
-To maintain a clean, machine-readable, and professional history, you must strictly adhere to the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+## 1. Context Budget
 
-* **Format:** \<type\>(\<scope\>): \<description\>
-* **The Imperative Mood:** Always use the imperative, present tense. Use "Add feature" instead of "Added feature" or "Adds feature."
-* **Case Sensitivity:** The type and scope must be strictly **lowercase**.
-* **Granularity:** If a task involves both a refactor and a new feature, you are required to split them into two distinct commits.
-* **Scope:** This is mandatory and must represent the specific module or component affected (e.g., repo, agents, routing, github).
-* **Authors:** Ensure that commits are authored by the authenticated user only; do not add co-authors.
-* **Branch Names:** Agent-created branches must use lowercase prefixes such as `feature/`, `fix/`, `chore/`, `docs/`, `refactor/`, `test/`, `perf/`, or `research/`.
-* **Issue Branches:** When a GitHub issue number exists, include it in the branch name, for example `feature/issue-123-add-oauth-provider`.
-* **PR Re-iteration:** Review, verification, and remediation passes must stay on the current PR head branch. Do not create a second branch for the same PR.
+This file is deliberately short enough for agents to read on every task. Agents MUST load relevant source files, tests, configuration, and linked docs before changing code instead of expanding `AGENTS.md` with every project detail.
 
-| Type | Use Case | Example |
-| :---- | :---- | :---- |
-| **feat** | A new feature for the user. | feat(auth): add OAuth2 provider |
-| **fix** | A bug fix for the user. | fix(api): resolve null pointer in user-lookup |
-| **docs** | Documentation-only changes. | docs(automation): explain assigned issue prerequisites |
-| **refactor** | Code change that neither fixes a bug nor adds a feature. | refactor(db): flatten repository hierarchy |
-| **test** | Adding missing tests or correcting existing tests. | test(vault): add boundary checks for encryption |
-| **chore** | Updating build tasks, package manager configs, etc. | chore(deps): bump Newtonsoft.Json to 13.0.3 |
-| **ci** | CI workflow or automation pipeline changes. | ci(github): add release workflow validation |
-| **perf** | Performance improvements. | perf(parser): reduce tokenization allocations |
-| **tool** | Automation scripts or internal dev-tooling. | tool(automation): add C\# script for log rotation |
+Keep detailed architecture notes, incident runbooks, API contracts, and generated references outside this file. Link to them only when agents commonly need them.
 
-## **2\. Testing: The "Anti-Pollution" Mandate**
+## 2. Delivery Contract
 
-We prioritize **quality and logical failure paths** over coverage metrics. You are forbidden from generating "shallow" or "ritualistic" tests.
+An agent delivery is complete only when the change is scoped, implemented, validated, and explained.
 
-* **Ban on Mock-Only Tests:** Do not write tests that only verify if a mock was called (e.g., \_mock.Verify(x \=\> x.Save(), Times.Once)). This tests implementation details (how the code is written), not business behavior (what the code does).
-* **The "Mutation" Requirement:** Every test must be designed so that if the underlying logic is changed or deleted, the test **fails**. If a test passes after the logic it is supposedly testing is removed because everything is mocked, the test is pollution and must be deleted.
-* **Behavioral Focus:** Focus on state changes, return values, and edge cases. If a method is a simple "Pass-Through" (calling another service with no internal logic), **do not unit test it.**
-* **Dependency Limit:** If a unit test requires more than 3 Mock\<T\> objects, the code is too highly coupled. Stop and suggest a refactor or write an **Integration Test** instead.
+Before changing code, agents MUST identify the behavior or technical outcome being changed, the likely affected files or modules, the acceptance criteria, assumptions made from incomplete instructions, and explicitly out-of-scope work. If acceptance criteria are missing, infer the smallest reasonable criteria and state them in the final response.
 
-## **3\. TUnit: Microsoft Testing Platform Rules**
+Agents MUST minimize blast radius: prefer the smallest coherent change, preserve existing architecture and style, keep unrelated refactors out, avoid broad rewrites and mass formatting, and add abstractions only when there is a real boundary or repeated need.
 
-This repository uses **TUnit on Microsoft.Testing.Platform (MTP)**, not VSTest. Agents must use TUnit-compatible filters, timeouts, and hang-debugging options.
+Agents MUST NOT hand-edit generated files unless required, change public APIs or persisted contracts without calling out migration impact, hide uncertainty behind TODOs or broad fallbacks, or claim validation that was not run.
 
-* **Never use VSTest filters:** Do not run `dotnet test --filter ...` with TUnit. Use `--treenode-filter` instead. If platform args are rejected, pass them after `--`.
-* **Filter shape:** TUnit filters use `/Assembly/Namespace/Class/TestName[Property=Value]`. Common patterns: class `/*/*/ClassName/*`, method `/*/*/*/MethodName`, category `/*/*/*/*[Category=Integration]`, exclude category `/*/*/*/*[Category!=Slow]`, and combined properties `/*/*/*/*[(Category=Smoke)&(Priority=High)]`.
-* **Tag tests explicitly:** Prefer `[Property("Category", "Integration")]`, `[Property("Priority", "High")]`, and other explicit metadata so filters stay stable and self-documenting.
-* **Timeout defaults are mandatory:** Add an assembly-level `[assembly: Timeout(...)]` and override slower classes or methods with more specific `[Timeout(...)]` attributes.
-* **Cancellation is mandatory for async and IO tests:** Every async, integration, or polling-heavy test must accept `CancellationToken cancellationToken` and pass it to HTTP calls, DB calls, delays, process waits, and application startup/shutdown.
-* **No sync-over-async or uncancellable waits:** Do not use `.Wait()`, `.Result`, `.GetAwaiter().GetResult()`, uncancellable `Task.Delay(...)`, or polling loops that ignore the token.
-* **Parallelism can look like hangs:** TUnit runs tests in parallel by default. If a full-suite run hangs but a filtered run passes, suspect shared ports, shared databases, static locks/state, or non-thread-safe fixtures. Use `[NotInParallel]`, `[ParallelGroup]`, `[ParallelLimiter<T>]`, or lower global parallelism.
-* **Use MTP run-level watchdogs for CI:** Prefer `dotnet test -c Release --timeout 10m` for suite timeouts, or `dotnet test -c Release -- --timeout 10m` when the SDK requires explicit forwarding.
-* **Use hang dumps for true deadlocks:** When cooperative cancellation is not enough, add `Microsoft.Testing.Extensions.HangDump` and use `--hangdump --hangdump-timeout <duration>` instead of VSTest-only `--blame-hang`.
+## 3. Repository Discovery
 
-```text
-TUnit quick rules:
-- Preferred filter run: dotnet test -c Release --treenode-filter "<filter>"
-- Forwarded filter run: dotnet test -c Release -- --treenode-filter "<filter>"
-- Preferred timeout run: dotnet test -c Release --timeout 10m
-- Filter shape: /Assembly/Namespace/Class/TestName[Property=Value]
+Before implementation, inspect the repository source of truth instead of guessing. Check the relevant subset of `global.json`, `Directory.Build.props`, `Directory.Build.targets`, `.editorconfig`, solution files, affected `*.csproj` files, README/CONTRIBUTING/local docs, CI workflows, nearby tests, and existing patterns for dependency injection, logging, options, validation, errors, persistence, and test style.
+
+Agents MUST determine the configured .NET SDK, target framework, nullable setting, implicit usings setting, analyzer configuration, and `LangVersion` before introducing modern C# syntax. Do not use a language feature the repository does not enable unless the task includes upgrading language settings.
+
+## 4. Modern C# and .NET
+
+Write simple, explicit, maintainable code for the configured language version.
+
+Agents SHOULD use primary constructors for dependency-injected classes when readable, collection expressions and spread elements when supported, the `field` keyword for field-backed properties when the repository targets C# 14 or later, pattern matching such as `is null` and `is not null`, `sealed` classes when inheritance is not intended, `readonly` fields and immutable types for stable state, records for immutable value-like data, and `TimeProvider` or the repository clock abstraction for testable time.
+
+Agents MUST NOT use older patterns out of habit, direct `DateTime.Now` or `DateTime.UtcNow` in testable business logic, static mutable state for application behavior, service locators when constructor injection is available, or reflection/dynamic/magic strings when typed alternatives are practical.
+
+## 5. Nullability and Dependency Injection
+
+Nullable annotations are API contracts. Treat `T` as required and non-null, `T?` as explicitly nullable, and optional defaults as a separate contract from nullability.
+
+Agents MUST keep nullable warnings clean, prefer overloads or Null Object implementations over nullable dependencies, use `ArgumentNullException.ThrowIfNull(...)` at public boundaries when required runtime values can still be null, and use null-forgiving (`!`) only at unavoidable framework boundaries with a short invariant comment.
+
+Agents MUST NOT add `= null` to required parameters to avoid updating call sites, make constructor-injected services optional by default, suppress nullable warnings globally, or return `null` from non-null APIs.
+
+Services MUST be small, explicit, and easy to test. Prefer constructor injection, register correct lifetimes, keep scoped services out of singletons, let DI own disposables, and avoid `IServiceProvider` service location unless a framework pattern requires it.
+
+## 6. Async, Errors, Observability, and Performance
+
+Public async and IO-facing APIs SHOULD accept `CancellationToken cancellationToken = default` unless the repository uses a stricter convention. Pass the token to HTTP, database, queue, file, stream, delay, process, startup, shutdown, and polling APIs.
+
+Agents MUST use `await` all the way, use bounded timeouts for external calls, preserve cancellation, prefer async APIs for IO-bound work, and avoid `.Result`, `.Wait()`, `.GetAwaiter().GetResult()`, uncancellable `Task.Delay(...)`, infinite polling loops, and unowned fire-and-forget tasks.
+
+Agents MUST make failure modes deliberate: validate at boundaries, preserve stack traces, add actionable context without secrets, avoid silent `catch (Exception)`, avoid converting every failure to `false`/`null`/empty, and never swallow cancellation.
+
+Production code SHOULD be diagnosable without a debugger. Use structured logging, include useful identifiers, choose correct log levels, and never log secrets, credentials, tokens, connection strings, PII, or large sensitive payloads.
+
+Agents MUST avoid obvious production-path inefficiency such as repeated enumeration of expensive sources, unnecessary materialization, per-item database or network calls in loops, and unmeasured performance claims.
+
+## 7. Security and Data Safety
+
+Treat security as correctness. Validate inputs at trust boundaries, use parameterized queries or safe ORM patterns, preserve authorization checks, normalize and validate paths, keep cryptography/auth changes minimal and reviewable, use secure defaults, and update tests when security-sensitive behavior changes.
+
+Agents MUST NOT disable authentication, authorization, HTTPS, certificate validation, CSRF protection, CORS restrictions, or input validation to make tests pass. Do not add hard-coded secrets, permissive production fallbacks, or predictable randomness outside tests.
+
+## 8. Testing Standards
+
+Tests must catch defects, document behavior, and enable safe change. Coverage numbers are secondary.
+
+Every test MUST fail if the behavior it claims to verify is removed or meaningfully broken. Delete or rewrite tests that only verify mocks, repeat implementation details, pass when core logic is deleted, obscure behavior with excessive setup, depend on order/time/local machine state/shared mutation, or exist only for coverage.
+
+Agents MUST test observable behavior: return values, state changes, persisted effects, published messages/events, validation failures, authorization boundaries, idempotency, edge cases, cancellation, and concurrency when relevant.
+
+Agents SHOULD NOT unit test pure pass-through methods with no branching, transformation, validation, or error handling. Prefer integration tests at real boundaries.
+
+Mocks are allowed only to isolate external boundaries or expensive dependencies. If a unit test needs more than three `Mock<T>` objects, refactor the production code to reduce coupling or write an integration test.
+
+Tests MUST be deterministic: avoid real sleeps, unseeded randomness, current time without `TimeProvider` or a fake clock, shared ports/databases/files/static mutable state, and external state that is not isolated and cleaned up.
+
+Use integration tests for routing, middleware, serialization, database mapping, transactions, queues, external clients, configuration, dependency injection wiring, and other behavior that depends on real boundaries.
+
+## 9. TUnit and Microsoft.Testing.Platform
+
+This repository uses TUnit on Microsoft.Testing.Platform (MTP). Agents MUST NOT assume VSTest behavior.
+
+Prefer full-suite validation with:
+
+```bash
+dotnet test -c Release
+dotnet test -c Release --timeout 10m
 ```
 
-## **4\. Automation: C\# 10+ File-Based Apps**
+Use TUnit/MTP filters instead of VSTest filters:
 
-**Bash and PowerShell are deprecated in this repository.** All automation, maintenance, and tooling must be written as **C\# 10 File-Based Apps**.
+```bash
+dotnet test -c Release --treenode-filter "/*/*/ClassName/*"
+dotnet test -c Release --treenode-filter "/*/*/*/MethodName"
+dotnet test -c Release --treenode-filter "/*/*/*/*[Category=Integration]"
+dotnet test -c Release --treenode-filter "/*/*/*/*[Category!=Slow]"
+```
 
-* **Standalone Execution:** Use the single-file format that runs via dotnet run \<filename\>.cs.
-* **NuGet Integration:** Use the \#:package directive at the top of the file to manage dependencies.
-* **No Boilerplate:** Do not use namespace, class Program, or static void Main. Write logic directly using Top-Level Statements.
-* **Portability:** Use Path.Combine or forward slashes. Scripts must be execution-ready on Windows, macOS, and Linux without modification.
-* **Option Forwarding:** When invoking a file-based app and forwarding option-style args to the script, insert `--` after the script file. *Correct:* `dotnet run Build.cs -- test -c Release`. *Incorrect:* `dotnet run Build.cs test -c Release` because the outer `dotnet run` consumes `-c`.
-* **Example Structure:**
-  \#\!/usr/bin/env dotnet
-  \#:package Newtonsoft.Json@13.0.3
-  \#:package Spectre.Console@0.49.1
+If the SDK or runner rejects platform arguments, forward them after `--`:
 
-  using Newtonsoft.Json;
-  using Spectre.Console;
+```bash
+dotnet test -c Release -- --treenode-filter "/*/*/ClassName/*"
+dotnet test -c Release -- --timeout 10m
+```
 
-  // Logic starts here...
-  AnsiConsole.MarkupLine("\[bold green\]Executing repo automation...\[/\]");
+Agents MUST NOT use VSTest-only options such as `--filter` or `--blame-hang` unless the repository explicitly configures VSTest for that project.
 
-## **5\. Modern C\# 14 Idioms**
+Tag tests that need filtering with stable metadata such as `[Property("Category", "Integration")]`, `[Property("Category", "Slow")]`, `[Property("Priority", "High")]`, or `[Property("Owner", "<team-or-module>")]`.
 
-Always favor the most concise, high-performance syntax available in C\# 14\. Do not generate legacy C\# code styles.
+Every test project MUST define a default timeout, for example `[assembly: Timeout(30_000)]`. Async, IO, integration, and polling-heavy tests MUST accept `CancellationToken cancellationToken` and pass it to cancellable operations.
 
-* **The field Keyword:** For properties with logic, use the field keyword instead of declaring explicit backing fields.
-  * *Correct:* public int Quality { get; set \=\> field \= Math.Clamp(value, 0, 100); }
-* **Collection Expressions:** Use the \[\] syntax for all collection initializations and the spread operator .. for concatenations.
-  * *Correct:* string\[\] items \= \["alpha", "beta", "gamma"\];
-  * *Correct:* var combined \= \[..existingItems, newItem\];
-* **Primary Constructors:** Use primary constructors for all classes and structs, particularly for dependency injection.
-  * *Correct:* public class OrderService(IDbContext db, ILogger log) { ... }
-* **Terseness:** If a method or property can be expressed in a single line, use the expression-bodied member syntax (=\>).
-* **Null-State Safety:** Use is not null and the null-coalescing assignment operator ??=. Avoid redundant manual null checks where the compiler's static analysis already provides safety.
+TUnit runs tests in parallel by default. Isolate shared resources or use `[NotInParallel]`, `[ParallelGroup]`, or a repository-approved limiter only when isolation is not practical. Do not disable all parallelism to hide races.
 
-## Optional parameters and nullability
+For real deadlocks or non-cooperative hangs, use MTP hang dump support:
 
-1. **Optional ≠ nullable.** `param = default` means callers may omit it; `T?` means the value may be null. Do not conflate the two contracts.
+```bash
+dotnet test -c Release --timeout 10m --hangdump --hangdump-timeout 2m
+```
 
-2. **Do not add `= null` to avoid updating call sites.** If the dependency/value is actually required, make callers pass it and fix every compile error.
+## 10. Automation and Tooling
 
-3. **Nullable annotations are API contracts.** Use `T` for required non-null values, `T?` only when null is explicitly supported and tested.
+Bash and PowerShell are deprecated for repository automation unless explicitly allowed for CI glue. New automation MUST be written as C# file-based apps when the repository targets a compatible .NET SDK.
 
-4. **Every nullable parameter creates a handling obligation.** If `ILogger? logger = null`, every implementation path must safely handle `null`; otherwise the API is lying.
+C# file-based apps MUST be single `.cs` files unless converted to a project, use top-level statements for straightforward tools, use `#:package` for NuGet dependencies, use cross-platform path APIs, return explicit exit codes, print actionable errors to stderr, support `--help` when options exist, be idempotent by default, and provide `--dry-run` for destructive operations.
 
-5. **Prefer overloads for convenience.** Use `DoThing()` delegating to `DoThing(requiredLogger)` or a well-defined default, instead of spreading null checks through the code.
+When invoking `Build.cs`, follow the repository's documented form. If forwarding option-style args, include the script separator, for example:
 
-6. **Prefer Null Object/default implementations over null.** Example: use `NullLogger<T>.Instance` internally when “no logging” is a valid behavior.
+```bash
+dotnet run Build.cs -- test -c Release
+# or, for SDKs using explicit file mode:
+dotnet run --file Build.cs -- test -c Release
+```
 
-7. **Do not make services/dependencies optional by default.** Constructor-injected dependencies, loggers, clients, repositories, clocks, etc. should usually be required.
+Automation MUST NOT delete, overwrite, or migrate data without `--dry-run` and confirmation, depend on developer-machine paths, require undocumented global tools, store secrets, or hide failing external commands.
 
-8. **Optional parameter defaults are versioning hazards.** In C#, default values are baked into call sites; changing the default may not affect already-compiled callers.
+## 11. Git, Branches, and Commits
 
-9. **Only use optional parameters for stable, obvious defaults.** Good examples: flags, timeouts, `CancellationToken cancellationToken = default`; bad examples: hidden dependencies or required business data.
+Use Conventional Commits:
 
-10. **When adding a parameter, decide deliberately:** required → update all call sites; truly optional → define exact default behavior; nullable → document and test null behavior.
+```text
+<type>(<scope>): <description>
+```
 
-## **6\. Agent Self-Correction Protocol**
+The type and scope MUST be lowercase, the scope is mandatory, the description uses imperative present tense and has no trailing period, and each commit should contain one logical change. Do not add AI co-authors unless the repository explicitly requires it.
 
-Before finalizing any output, the Agent must perform an internal "Pre-Flight Check":
+Allowed types: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`, `chore`, and `tool`.
 
-1. **Logic Check:** Does the generated test actually catch a logic error, or is it just mocking a call?
-2. **TUnit Check:** If I touched tests or test docs, did I use TUnit/MTP-compatible filters, timeouts, cancellation tokens, and parallelism controls instead of VSTest-only flags?
-3. **Script Check:** Is this automation a .cs file? If it is .ps1 or .sh, it must be converted.
-4. **Syntax Check:** Am I using the field keyword, \[\] collections, and Primary Constructors?
-5. **Build.cs Arg Check:** If I documented or invoked `Build.cs` with forwarded option-style args, did I include `--` after `Build.cs`?
-6. **Commit Check:** Is my proposed commit message formatted as type(scope): description?
+Agent-created branches MUST use one of these prefixes: `feature/`, `fix/`, `docs/`, `refactor/`, `test/`, `perf/`, `ci/`, `build/`, `chore/`, `tool/`, or `research/`. Include an issue number when one exists, for example `feature/issue-123-add-oauth-provider`.
 
-**Failure to comply:** If an Agent is informed it has violated these rules, it must immediately revert the offending code and provide a compliant correction.
+Review, remediation, and verification passes for an existing PR MUST stay on the current PR head branch.
+
+## 12. Final Response and PR Requirements
+
+Every PR or final response MUST include the summary, changed areas, validation commands and results, tests added or updated, risk notes, and follow-up work that is not required for correctness.
+
+Final responses MUST NOT imply validation that was not performed. If validation could not run, say exactly what was not run and why.
+
+## 13. Pre-Flight Checklist
+
+Before final delivery, verify:
+
+- The requested behavior is implemented and assumptions are stated.
+- No unrelated files were modified.
+- Public API or data contract changes are documented.
+- Restore/build/test/format commands relevant to the change were run or explicitly reported as not run.
+- Nullable and analyzer warnings remain clean.
+- Code follows repository patterns for DI, async, cancellation, errors, logging, and security.
+- Tests assert behavior rather than implementation details.
+- TUnit filters, timeouts, cancellation, and parallelism controls use MTP-compatible options.
+- New automation is a C# file-based app when applicable.
+- Final response includes exact validation results.
+- Proposed commit message follows `type(scope): description`.
+
+## 14. Prohibited Anti-Patterns
+
+Agents MUST NOT introduce mock-only tests, tests that pass when production logic is deleted, sync-over-async, unbounded retries, uncancellable waits, hidden static mutable state, service locator usage without framework justification, optional constructor dependencies, swallowed blanket exceptions, silent production fallback configuration, hard-coded secrets, broad unrelated refactors, unmeasured performance claims, large abstractions with one implementation and one call site, obvious comments, TODOs without an issue reference or owner, or changes that only make the current test pass while breaking realistic behavior.
+
+## 15. Remediation Protocol
+
+If an agent violates this standard, it MUST immediately identify the violated rule, revert or replace the offending change, provide a compliant implementation, add or update tests proving the corrected behavior, re-run relevant validation, and state the remediation clearly.
 ````
 
-**Why**: This gives every scaffolded repository a consistent root-level agent contract covering commits, testing quality, TUnit/MTP execution, automation, modern C# idioms, and self-correction expectations.
+**Why**: This gives every scaffolded repository a consistent root-level agent contract covering delivery discipline, repository discovery, modern C# standards, behavior-focused testing, TUnit/MTP execution, safe automation, security, commits, and final response expectations without overloading the agent context window.
 
-**Agent note**: A weak `AGENTS.md` is a scaffold bug. Copy this full contract, or adapt the user's stronger house standard to the new repository. Never downshift it into a minimal "notes" stub.
+**Agent note**: A weak `AGENTS.md` is a scaffold bug. Copy this contract, or adapt the user's stronger house standard to the new repository. Keep the root file concise; move deep project-specific guidance to linked docs instead of inflating `AGENTS.md`.
 
 ### 1.16 `.config/dotnet-tools.json`
 
@@ -3075,6 +3130,7 @@ Before declaring the scaffold complete, verify:
 ├── .jscpd.json
 ├── .markdownlint.json
 ├── .pre-commit-config.yaml
+├── AGENTS.md
 ├── Build.cs
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
@@ -3091,7 +3147,7 @@ Before declaring the scaffold complete, verify:
 └── <APPNAME>.slnx
 ```
 
-**Total**: ~55 files across ~30 directories for the reference architecture (1 AppHost, 1 ServiceDefaults, 1 Gateway, 1 Silo, 2 grain projects, 2 common projects, 1 protocol project, 2 test projects). Scales to 50+ projects by adding more grains, more common libraries, and more specialized hosts (e.g., a separate worker silo, an admin API host).
+**Total**: ~56 files across ~30 directories for the reference architecture (1 AppHost, 1 ServiceDefaults, 1 Gateway, 1 Silo, 2 grain projects, 2 common projects, 1 protocol project, 2 test projects). Scales to 50+ projects by adding more grains, more common libraries, and more specialized hosts (e.g., a separate worker silo, an admin API host).
 
 ---
 
