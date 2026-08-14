@@ -15,7 +15,7 @@ This guide targets a **multi-process distributed system** where multiple service
 
 - Solution structure — `src/host/`, `src/grain/` (or `src/actors/`), `src/common/`, `src/protocol/`, `test/`
 - CI pipeline — builds and integration-tests multiple service hosts; no single-file publish
-- `Build.cs` — adds `run-local` (starts Aspire AppHost), `run-silo`, no single-exe publish
+- `Build.cs` — adds `run-local` (starts the Aspire AppHost) and per-host publish; no unsupported standalone-host shortcut or single-executable publish
 - `Directory.Build.props` hierarchy — host layer, grain layer, test layer each with different defaults
 - Test strategy — Orleans `TestCluster` or Akka.NET `TestKit` + Aspire integration tests
 
@@ -39,14 +39,14 @@ Ask the user for (or infer from context):
 | `AUTHOR`              | `yourname`                                                   | GitHub username                                                                                 |
 | `DOTNET_VERSION`      | `net10.0`                                                    | Target framework for all projects                                                               |
 | `CSHARP_VERSION`      | `14.0`                                                       | Match to chosen .NET version                                                                    |
-| `SDK_VERSION`         | `10.0.103`                                                   | Exact SDK version from `dotnet --version`                                                       |
+| `SDK_VERSION`         | `10.0.400`                                                   | Current stable .NET 10 SDK feature band (verified 2026-08-14); re-check before scaffolding       |
 | `GITHUB_URL`          | `https://github.com/you/APPNAME`                             | Full repo URL                                                                                   |
 | `LICENSE`             | `MIT`                                                        | License type                                                                                    |
 | `YEAR`                | `2026`                                                       | Copyright year                                                                                  |
 | `COMPANY`             | `yourname`                                                   | Used in copyright                                                                               |
 | `ACTOR_FRAMEWORK`     | `Orleans`                                                    | `Orleans` or `Akka.NET`                                                                         |
-| `ORLEANS_VERSION`     | `10.0.1`                                                     | Required if `ACTOR_FRAMEWORK=Orleans`                                                           |
-| `ASPIRE_VERSION`      | `13.2`                                                       | `Aspire.Hosting` meta-package version                                                           |
+| `ORLEANS_VERSION`     | `10.2.2`                                                     | Current stable Orleans package train; required for Orleans                                      |
+| `ASPIRE_VERSION`      | `13.4.6`                                                     | Current versioned AppHost SDK and Aspire package train                                          |
 | `USE_GATEWAY`         | `true`                                                       | true if the system needs a TCP/gRPC/HTTP gateway for external client connections                |
 | `GATEWAY_PROTOCOL`    | `TCP`                                                        | `TCP` (DotNetty), `gRPC`, `HTTP`, or `WebSocket`; only if `USE_GATEWAY=true`                   |
 | `STORAGE_BACKEND`     | `InMemory`                                                   | `InMemory` / `PostgreSQL` / `MongoDB` / `AzureBlob` — drives which storage NuGet packages appear |
@@ -87,18 +87,30 @@ Grain / actor persistence drives which storage packages are needed:
 | Backend     | Orleans package                          | Akka.NET package              |
 | ----------- | ---------------------------------------- | ----------------------------- |
 | In-memory   | `Microsoft.Orleans.Core` (built-in)      | `Akka.Persistence` (built-in) |
-| PostgreSQL  | `Orleans.Persistence.AdoNet` + Npgsql    | `Akka.Persistence.PostgreSql` |
-| MongoDB     | `Orleans.Persistence.MongoDB`            | `Akka.Persistence.MongoDb`    |
-| Azure Blob  | `Orleans.Persistence.AzureStorage`       | —                             |
-| SQL Server  | `Orleans.Persistence.AdoNet` + SqlClient | `Akka.Persistence.SqlServer`  |
+| PostgreSQL  | `Microsoft.Orleans.Persistence.AdoNet` + Npgsql | `Akka.Persistence.PostgreSql` |
+| MongoDB     | No verified Orleans 10 provider by default      | `Akka.Persistence.MongoDb`    |
+| Azure Blob  | `Microsoft.Orleans.Persistence.AzureStorage`    | —                             |
+| SQL Server  | `Microsoft.Orleans.Persistence.AdoNet` + SqlClient | `Akka.Persistence.SqlServer`  |
 
-> **Agent note**: The `STORAGE_BACKEND` variable drives which `<PackageVersion>` entries appear in `Directory.Packages.props`. Always add the packages; delete the ones not needed after user confirms the choice.
+> **Agent note**: Add only the selected provider after verifying its current stable release and compatibility with the chosen actor-framework version. `Microsoft.Orleans.Persistence.MongoDB` does not exist; the community `Orleans.Providers.MongoDB` release shown later targets an older Orleans train and must not be enabled without an explicit compatibility decision.
+
+### Distributed-System Acceptance Gate
+
+Before generating projects, record these decisions as acceptance criteria rather than leaving them as implementation TODOs:
+
+- Message delivery semantics (at-most-once, at-least-once, or effectively-once) and the idempotency/deduplication key for every retried command.
+- Serialization compatibility: stable Orleans field IDs or message schema rules, additive evolution, and a migration/rollback plan for persisted state.
+- Bounded timeouts, retry budgets with jitter, circuit breaking, queue/mailbox limits, and backpressure. Retry only operations proven safe to repeat.
+- Production clustering, storage, reminders, and stream providers; localhost clustering and in-memory state must fail closed outside Development.
+- Authentication and authorization at the gateway, TLS between trust boundaries, secret injection, and protection against replay or oversized payloads.
+- Correlation IDs, structured logs, traces, metrics, readiness/liveness probes, graceful drain/shutdown, and an operator-visible failure mode.
+- Behavioral tests for duplicate delivery, cancellation, timeouts, serialization upgrades, partial dependency failure, restart/recovery, and multi-replica concurrency.
 
 ---
 
 ## Phase 0b: Initialize Git Repository
 
-Before creating any files, initialize the repository:
+Initialize Git only when the user explicitly requested repository initialization. First resolve the exact target directory and inspect for an existing repository or user files; never run these commands in a populated directory implicitly. Otherwise skip Git mutations and present the commands as optional handoff steps:
 
 ```shell
 mkdir <APPNAME> && cd <APPNAME>
@@ -112,19 +124,7 @@ git config user.name   # must print the real name, not a placeholder
 git config user.email  # must print the real email / GitHub-linked address
 ```
 
-If the output is wrong (for example it shows a machine hostname, `bia10@github.com`, or is empty), fix it before committing:
-
-```shell
-# Fix locally (this repo only):
-git config user.name  "Your Name"
-git config user.email "you@example.com"
-
-# Or remove a local override and fall back to global:
-git config --unset user.name
-git config --unset user.email
-```
-
-> **Agent note**: Do not set or override `user.name`/`user.email` yourself. Flag any mismatch to the user.
+If the output is wrong or empty, stop before committing and ask the user to correct it. Agents must not set, unset, or override `user.name` or `user.email`.
 
 **Run CSharpier before the first commit.** After all source files are created but before any `git add`:
 
@@ -137,7 +137,7 @@ dotnet format analyzers
 
 ### Branch and PR workflow
 
-Create a scoped branch before adding source changes:
+If branch creation was explicitly authorized, create a scoped branch before adding source changes:
 
 ```shell
 git checkout -b feature/<scope>-<summary>
@@ -148,9 +148,9 @@ git checkout -b feature/<scope>-<summary>
 
 Use lowercase prefixes. When the work is tied to a GitHub issue, include the issue number in the branch name, for example `feature/issue-123-add-aspire-gateway-host`.
 
-After the first green push, open a **draft** pull request, link the related issue in the PR body when one exists (`Fixes #123`), and keep review, verification, and remediation commits on that same branch until the PR is ready for human merge review.
+When the user also authorized pushing and opening a PR, open a **draft** after the first green push, link the related issue when one exists (`Fixes #123`), and keep review/remediation commits on the same head branch. Scaffolding authorization alone does not authorize a push or PR.
 
-### Recommended commit strategy
+### Recommended commit strategy (only when commits are authorized)
 
 ```shell
 # Commit 1: Root config files (Phase 1)
@@ -183,9 +183,14 @@ Create the shared repository-root files below first. This guide is standalone, s
     "version": "<SDK_VERSION>",
     "rollForward": "latestPatch",
     "allowPrerelease": false
+  },
+  "test": {
+    "runner": "Microsoft.Testing.Platform"
   }
 }
 ```
+
+**Why**: Pins a stable SDK feature band and selects the runner required by TUnit for every test project. `latestPatch` accepts newer servicing patches only within the selected feature band; it does not silently move `10.0.1xx` to `10.0.4xx`. Update `SDK_VERSION` deliberately after validation.
 
 ### 1.2 `nuget.config`
 
@@ -322,11 +327,11 @@ dotnet_diagnostic.MA0051.severity = none
 ```yaml
 repos:
   - repo: https://github.com/gitleaks/gitleaks
-    rev: <LATEST_GITLEAKS_TAG>
+    rev: 6eaad039603a4de39fddd1cf5f727391efe9974e # v8.30.0; v8.30.1 has a detection regression
     hooks:
       - id: gitleaks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: <LATEST_PRECOMMIT_HOOKS_TAG>
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -339,7 +344,7 @@ repos:
         types: [c#]
 ```
 
-Install `pre-commit` via `pip install pre-commit` or `pipx install pre-commit`. If Python is not available, skip this file and rely on CI plus the format checks.
+Install `pre-commit` via `pip install pre-commit` or `pipx install pre-commit`. If Python is not available, rely on equivalent CI checks. The Gitleaks pin deliberately stays at v8.30.0 because v8.30.1 has a confirmed regression that can miss known secrets; re-evaluate this documented security exception when a fixed release ships.
 
 ### 1.9 `codecov.yml` _(Optional)_
 
@@ -383,13 +388,13 @@ Thank you for considering contributing.
 ## How to Contribute
 
 1. Create a scoped branch from `main`, for example `feature/<scope>-<summary>` or `fix/<scope>-<summary>`.
-2. Run `dotnet run Build.cs format` to restore local tools (CSharpier + dotnet-coverage) and normalize formatting.
+2. Run `dotnet Build.cs -- format` to restore local tools (CSharpier + dotnet-coverage) and normalize formatting.
 3. Ensure the repository passes:
 
    ```shell
-   dotnet run Build.cs build Release
-   dotnet run Build.cs -- test -c Release
-   dotnet run Build.cs format check
+   dotnet Build.cs -- build Release
+   dotnet Build.cs -- test -c Release
+   dotnet Build.cs -- format check
    ```
 
 5. Push the branch and open a draft pull request against `main`.
@@ -426,6 +431,8 @@ Before changing code, agents MUST identify the behavior or technical outcome bei
 
 Agents MUST minimize blast radius: prefer the smallest coherent change, preserve existing architecture and style, keep unrelated refactors out, avoid broad rewrites and mass formatting, and add abstractions only when there is a real boundary or repeated need.
 
+Before editing, inspect repository status. Existing modifications and untracked files belong to the user unless the task says otherwise. Agents MUST preserve them, MUST NOT silently overwrite or discard them, and MUST stop and report any overlap that cannot be resolved safely.
+
 Agents MUST NOT hand-edit generated files unless required, change public APIs or persisted contracts without calling out migration impact, hide uncertainty behind TODOs or broad fallbacks, or claim validation that was not run.
 
 ## 3. Repository Discovery
@@ -433,6 +440,8 @@ Agents MUST NOT hand-edit generated files unless required, change public APIs or
 Before implementation, inspect the repository source of truth instead of guessing. Check the relevant subset of `global.json`, `Directory.Build.props`, `Directory.Build.targets`, `.editorconfig`, solution files, affected `*.csproj` files, README/CONTRIBUTING/local docs, CI workflows, nearby tests, and existing patterns for dependency injection, logging, options, validation, errors, persistence, and test style.
 
 Agents MUST determine the configured .NET SDK, target framework, nullable setting, implicit usings setting, analyzer configuration, and `LangVersion` before introducing modern C# syntax. Do not use a language feature the repository does not enable unless the task includes upgrading language settings.
+
+On native Windows, treat shell invocations as expensive. Batch bounded, related read-only inspections; prefer `rg`, `rg --files`, `bat`, `git`, and `dotnet` over PowerShell object pipelines; use `rg -n -C 8` for context and `bat --line-range` for source ranges; and never use `Get-Content | Select-Object -Skip/-First` for source inspection. Scope builds and tests to the smallest affected project, use `--no-restore` only when dependencies are unchanged and restore already succeeded, iterate in Debug unless Release behavior matters, and do not run a full solution build or test suite after every small edit.
 
 ## 4. Modern C# and .NET
 
@@ -474,46 +483,54 @@ Agents MUST NOT disable authentication, authorization, HTTPS, certificate valida
 
 Tests must catch defects, document behavior, and enable safe change. Coverage numbers are secondary.
 
-Every test MUST fail if the behavior it claims to verify is removed or meaningfully broken. Delete or rewrite tests that only verify mocks, repeat implementation details, pass when core logic is deleted, obscure behavior with excessive setup, depend on order/time/local machine state/shared mutation, or exist only for coverage.
+Every behavioral test MUST fail if the behavior it claims to verify is removed or meaningfully broken. Clearly labeled compile, wiring, health, and contract smoke tests MAY prove infrastructure rather than domain behavior, but MUST assert the boundary they name. Delete or rewrite tests that only verify test doubles, repeat implementation details, obscure behavior with excessive setup, depend on order/time/local machine state/shared mutation, or exist only for coverage.
 
 Agents MUST test observable behavior: return values, state changes, persisted effects, published messages/events, validation failures, authorization boundaries, idempotency, edge cases, cancellation, and concurrency when relevant.
 
 Agents SHOULD NOT unit test pure pass-through methods with no branching, transformation, validation, or error handling. Prefer integration tests at real boundaries.
 
-Mocks are allowed only to isolate external boundaries or expensive dependencies. If a unit test needs more than three `Mock<T>` objects, refactor the production code to reduce coupling or write an integration test.
+Test doubles are allowed only to isolate external boundaries or expensive dependencies. More than three substitutes, mocks, or fakes in one test is a coupling warning: simplify the design or prefer an integration test unless the additional doubles are clearly justified.
 
 Tests MUST be deterministic: avoid real sleeps, unseeded randomness, current time without `TimeProvider` or a fake clock, shared ports/databases/files/static mutable state, and external state that is not isolated and cleaned up.
 
 Use integration tests for routing, middleware, serialization, database mapping, transactions, queues, external clients, configuration, dependency injection wiring, and other behavior that depends on real boundaries.
 
-## 9. TUnit and Microsoft.Testing.Platform
+## 9. TUnit test execution
 
-This repository uses TUnit on Microsoft.Testing.Platform (MTP). Agents MUST NOT assume VSTest behavior.
+This repository uses TUnit exclusively. TUnit runs on Microsoft.Testing.Platform (MTP), the test runner selected by `global.json`; MTP is infrastructure, not a second test framework. Do not add another test framework or adapter.
 
-Prefer full-suite validation with:
-
-```bash
-dotnet test -c Release
-dotnet test -c Release --timeout 10m
-```
-
-Use TUnit/MTP filters instead of VSTest filters:
+Use the TUnit runner selected in the repository `global.json` and identify the solution or project explicitly:
 
 ```bash
-dotnet test -c Release --treenode-filter "/*/*/ClassName/*"
-dotnet test -c Release --treenode-filter "/*/*/*/MethodName"
-dotnet test -c Release --treenode-filter "/*/*/*/*[Category=Integration]"
-dotnet test -c Release --treenode-filter "/*/*/*/*[Category!=Slow]"
+dotnet test --solution <solution>.slnx -c Release --no-launch-profile-arguments
+dotnet test --project test/<project>/<project>.csproj -c Release --no-launch-profile-arguments --timeout 10m
 ```
 
-If the SDK or runner rejects platform arguments, forward them after `--`:
+Use TUnit filters:
 
 ```bash
-dotnet test -c Release -- --treenode-filter "/*/*/ClassName/*"
-dotnet test -c Release -- --timeout 10m
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/ClassName/*"
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/*/MethodName"
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/*/*[Category=Integration]"
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/*/*[Category!=Slow]"
 ```
 
-Agents MUST NOT use VSTest-only options such as `--filter` or `--blame-hang` unless the repository explicitly configures VSTest for that project.
+Do not probe a test executable by forwarding discovery arguments through `dotnet test`. In particular, never run `dotnet test ... -- --help`, `dotnet test ... -- -?`, or `dotnet test ... -- --list-tests`; those arguments can collide with the .NET SDK/MTP protocol. Use the owning layer directly:
+
+```bash
+dotnet test --help
+dotnet run --project <test-project> -- --help
+dotnet run --project <test-project> -- --list-tests
+```
+
+If MTP reports a protocol or fail-fast error, do not retry blindly. Inspect the evaluated launch arguments and every injection point:
+
+```bash
+dotnet msbuild <test-project> -getProperty:TestingPlatformCommandLineArguments,RunArguments,RunCommand,RunWorkingDirectory
+rg -n "TestingPlatformCommandLineArguments|RunArguments|commandLineArgs|--help|-\?|--list-tests" .
+```
+
+Then inspect `Properties/launchSettings.json`, imported props/targets, wrappers, CI, and ancestor `global.json` files. Automated tests SHOULD use `--no-launch-profile-arguments`; use `--no-launch-profile` only when the entire profile, including environment variables and working directory, must be disabled. For SDK diagnostics, set `DOTNET_CLI_TEST_TRACEFILE` to a unique path per process or agent, never a shared trace file, and inspect the trace for hidden protocol arguments.
 
 Tag tests that need filtering with stable metadata such as `[Property("Category", "Integration")]`, `[Property("Category", "Slow")]`, `[Property("Priority", "High")]`, or `[Property("Owner", "<team-or-module>")]`.
 
@@ -521,10 +538,10 @@ Every test project MUST define a default timeout, for example `[assembly: Timeou
 
 TUnit runs tests in parallel by default. Isolate shared resources or use `[NotInParallel]`, `[ParallelGroup]`, or a repository-approved limiter only when isolation is not practical. Do not disable all parallelism to hide races.
 
-For real deadlocks or non-cooperative hangs, use MTP hang dump support:
+For real deadlocks or non-cooperative hangs, first add and centrally pin the optional `Microsoft.Testing.Extensions.HangDump` package in the affected test project. Only then use MTP hang dump options; without that extension, omit `--hangdump` and `--hangdump-timeout`:
 
 ```bash
-dotnet test -c Release --timeout 10m --hangdump --hangdump-timeout 2m
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --timeout 10m --hangdump --hangdump-timeout 2m
 ```
 
 ## 10. Automation and Tooling
@@ -533,12 +550,10 @@ Bash and PowerShell are deprecated for repository automation unless explicitly a
 
 C# file-based apps MUST be single `.cs` files unless converted to a project, use top-level statements for straightforward tools, use `#:package` for NuGet dependencies, use cross-platform path APIs, return explicit exit codes, print actionable errors to stderr, support `--help` when options exist, be idempotent by default, and provide `--dry-run` for destructive operations.
 
-When invoking `Build.cs`, follow the repository's documented form. If forwarding option-style args, include the script separator, for example:
+Use the .NET 10 file-app shorthand and forward task-runner arguments after `--`. The shorthand identifies `Build.cs` unambiguously, so `--file` is unnecessary; the separator keeps options such as `-c` and `--yes` from being consumed by the `dotnet` host:
 
 ```bash
-dotnet run Build.cs -- test -c Release
-# or, for SDKs using explicit file mode:
-dotnet run --file Build.cs -- test -c Release
+dotnet Build.cs -- test -c Release
 ```
 
 Automation MUST NOT delete, overwrite, or migrate data without `--dry-run` and confirmation, depend on developer-machine paths, require undocumented global tools, store secrets, or hide failing external commands.
@@ -554,6 +569,8 @@ Use Conventional Commits:
 The type and scope MUST be lowercase, the scope is mandatory, the description uses imperative present tense and has no trailing period, and each commit should contain one logical change. Do not add AI co-authors unless the repository explicitly requires it.
 
 Allowed types: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`, `chore`, and `tool`.
+
+Agents MUST NOT create or switch branches, commit, amend, rebase, push, publish packages, open pull requests, or change Git identity unless the user explicitly authorizes that action. When authorization is given, preserve the user's worktree and keep review/remediation work on the current PR head.
 
 Agent-created branches MUST use one of these prefixes: `feature/`, `fix/`, `docs/`, `refactor/`, `test/`, `perf/`, `ci/`, `build/`, `chore/`, `tool/`, or `research/`. Include an issue number when one exists, for example `feature/issue-123-add-oauth-provider`.
 
@@ -576,8 +593,10 @@ Before final delivery, verify:
 - Nullable and analyzer warnings remain clean.
 - Code follows repository patterns for DI, async, cancellation, errors, logging, and security.
 - Tests assert behavior rather than implementation details.
-- TUnit filters, timeouts, cancellation, and parallelism controls use MTP-compatible options.
+- TUnit filters, timeouts, cancellation, and parallelism controls use the repository's native runner options.
+- Automated `dotnet test` commands identify a project or solution, use `--no-launch-profile-arguments`, and do not forward help/list arguments.
 - New automation is a C# file-based app when applicable.
+- Existing user changes remain intact and no Git or publishing action exceeded the user's authorization.
 - Final response includes exact validation results.
 - Proposed commit message follows `type(scope): description`.
 
@@ -590,7 +609,7 @@ Agents MUST NOT introduce mock-only tests, tests that pass when production logic
 If an agent violates this standard, it MUST immediately identify the violated rule, revert or replace the offending change, provide a compliant implementation, add or update tests proving the corrected behavior, re-run relevant validation, and state the remediation clearly.
 ````
 
-**Why**: This gives every scaffolded repository a consistent root-level agent contract covering delivery discipline, repository discovery, modern C# standards, behavior-focused testing, TUnit/MTP execution, safe automation, security, commits, and final response expectations without overloading the agent context window.
+**Why**: This gives every scaffolded repository a consistent root-level agent contract covering delivery discipline, repository discovery, modern C# standards, behavior-focused TUnit testing, safe automation, security, commits, and final response expectations without overloading the agent context window.
 
 **Agent note**: A weak `AGENTS.md` is a scaffold bug. Copy this contract, or adapt the user's stronger house standard to the new repository. Keep the root file concise; move deep project-specific guidance to linked docs instead of inflating `AGENTS.md`.
 
@@ -602,12 +621,18 @@ If an agent violates this standard, it MUST immediately identify the violated ru
   "isRoot": true,
   "tools": {
     "csharpier": {
-      "version": "<LATEST_CSHARPIER>",
+      "version": "1.3.0",
       "commands": ["csharpier"]
+    },
+    "dotnet-coverage": {
+      "version": "18.10.0",
+      "commands": ["dotnet-coverage"]
     }
   }
 }
 ```
+
+Both local tools are exact stable pins verified on 2026-08-14. Re-check the exact package IDs before scaffolding and keep coverage invocation on `dotnet tool run dotnet-coverage`.
 
 ### 1.16a `.csharpierrc.json`
 
@@ -645,7 +670,7 @@ A clear and concise description of what you expected to happen.
 **Environment**
 
 - OS: [e.g. Windows 11, Ubuntu 24.04]
-- .NET version: [e.g. 10.0.3]
+- .NET runtime version: [e.g. 10.0.11]
 - <APPNAME> version: [e.g. 1.2.3]
 
 **Additional context**
@@ -684,9 +709,9 @@ Add any other context about the feature request here.
 
 ## Test plan
 
-- [ ] `dotnet run Build.cs build Release` passes with zero warnings
-- [ ] `dotnet run Build.cs -- test -c Release` passes
-- [ ] `dotnet run Build.cs format check` passes (CSharpier + dotnet format)
+- [ ] `dotnet Build.cs -- build Release` passes with zero warnings
+- [ ] `dotnet Build.cs -- test -c Release` passes
+- [ ] `dotnet Build.cs -- format check` passes (CSharpier + dotnet format)
 - [ ] Affected docs, samples, or README were updated when public behavior changed
 - [ ] Manual validation was completed when the change touched a UI, CLI, or runtime workflow
 
@@ -866,7 +891,7 @@ dotnet_diagnostic.CA1031.severity = suggestion
 
 ### 1.9a `codecov.yml` — Optional
 
-Codecov is optional for distributed applications. If the user wants it, include the optional `codecov.yml` shown above. TUnit bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively — no additional coverage packages are needed.
+Codecov is optional for distributed applications. If enabled, include `codecov.yml` and upload the deterministic Cobertura files produced by the pinned `dotnet-coverage` local tool through the repository coverage command.
 
 ### 1.10a Solution file — Deferred to Phase 12
 
@@ -920,19 +945,18 @@ test/
 ### Prerequisites
 
 - [.NET <DOTNET_VERSION> SDK](https://dotnet.microsoft.com/download)
-- [Aspire Workload](https://learn.microsoft.com/en-us/dotnet/aspire/fundamentals/setup-tooling): `dotnet workload install aspire`
+- A container runtime only when the selected Aspire resources require containers
 
 ### Setup
 
 ```shell
-dotnet workload install aspire
-dotnet run Build.cs build
+dotnet Build.cs -- build
 ```
 
 ### Run (via Aspire)
 
 ```shell
-dotnet run Build.cs run-local
+dotnet Build.cs -- run-local
 # or directly:
 dotnet run --project src/host/<APPNAME>.AppHost/<APPNAME>.AppHost.csproj
 ```
@@ -940,8 +964,8 @@ dotnet run --project src/host/<APPNAME>.AppHost/<APPNAME>.AppHost.csproj
 ### Test
 
 ```shell
-dotnet run Build.cs -- test -c Release
-dotnet run Build.cs coverage
+dotnet Build.cs -- test -c Release
+dotnet Build.cs -- coverage
 ```
 
 ## Development
@@ -949,14 +973,14 @@ dotnet run Build.cs coverage
 ### Task Runner
 
 ```shell
-dotnet run Build.cs help
+dotnet Build.cs -- help
 ```
 
 ### Code Formatting
 
 ```shell
-dotnet run Build.cs format        # auto-format
-dotnet run Build.cs format check  # CI-style, no changes
+dotnet Build.cs -- format        # auto-format
+dotnet Build.cs -- format check  # CI-style, no changes
 ```
 
 ## License
@@ -985,69 +1009,76 @@ Distributed applications have more packages than monoliths. CPM is non-negotiabl
        BUILD
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Build">
-    <PackageVersion Include="CSharpier.MsBuild" Version="<LATEST_CSHARPIER>" />
+    <PackageVersion Include="CSharpier.MsBuild" Version="1.3.0" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
        ASPIRE
-       Aspire.Hosting.* packages go in AppHost only.
+       Aspire.Hosting.* integration packages go in AppHost only.
+       Aspire.AppHost.Sdk supplies Aspire.Hosting.AppHost implicitly.
        Aspire.{Integration}.* packages go in host projects that use them.
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Aspire">
-    <PackageVersion Include="Aspire.Hosting" Version="<ASPIRE_VERSION>" />
-    <PackageVersion Include="Aspire.Hosting.Orleans" Version="<ASPIRE_HOSTING_ORLEANS_VERSION>" />
-    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="<ASPIRE_VERSION>" />
-    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="<ASPIRE_VERSION>" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="<LATEST_OTEL>" />
+    <PackageVersion Include="Aspire.Hosting.Orleans" Version="13.4.6" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.9.0" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.9.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.GrpcNetClient" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.17.0" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
        ORLEANS  (remove this section if ACTOR_FRAMEWORK=Akka.NET)
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Orleans">
-    <PackageVersion Include="Microsoft.Orleans.Core" Version="<ORLEANS_VERSION>" />
-    <PackageVersion Include="Microsoft.Orleans.Core.Abstractions" Version="<ORLEANS_VERSION>" />
-    <PackageVersion Include="Microsoft.Orleans.Server" Version="<ORLEANS_VERSION>" />
-    <PackageVersion Include="Microsoft.Orleans.Client" Version="<ORLEANS_VERSION>" />
-    <PackageVersion Include="Microsoft.Orleans.Serialization" Version="<ORLEANS_VERSION>" />
-    <PackageVersion Include="Microsoft.Orleans.Streaming" Version="<ORLEANS_VERSION>" />
-    <PackageVersion Include="Microsoft.Orleans.Reminders" Version="<ORLEANS_VERSION>" />
-    <PackageVersion Include="Microsoft.Orleans.Transactions" Version="<ORLEANS_VERSION>" />
-    <PackageVersion Include="Microsoft.Orleans.TestingHost" Version="<ORLEANS_VERSION>" />
+    <PackageVersion Include="Microsoft.Orleans.Core" Version="10.2.2" />
+    <PackageVersion Include="Microsoft.Orleans.Core.Abstractions" Version="10.2.2" />
+    <PackageVersion Include="Microsoft.Orleans.Server" Version="10.2.2" />
+    <PackageVersion Include="Microsoft.Orleans.Client" Version="10.2.2" />
+    <PackageVersion Include="Microsoft.Orleans.Serialization" Version="10.2.2" />
+    <PackageVersion Include="Microsoft.Orleans.Streaming" Version="10.2.2" />
+    <PackageVersion Include="Microsoft.Orleans.Reminders" Version="10.2.2" />
+    <PackageVersion Include="Microsoft.Orleans.Transactions" Version="10.2.2" />
+    <PackageVersion Include="Microsoft.Orleans.TestingHost" Version="10.2.2" />
     <!-- Persistence — add the one matching STORAGE_BACKEND -->
     <!-- InMemory: built into Microsoft.Orleans.Core — no extra package needed -->
-    <!-- <PackageVersion Include="Microsoft.Orleans.Persistence.AdoNet" Version="<ORLEANS_VERSION>" /> -->
-    <!-- <PackageVersion Include="Microsoft.Orleans.Persistence.MongoDB" Version="<LATEST_ORLEANS_MONGODB>" /> -->
-    <!-- <PackageVersion Include="Microsoft.Orleans.Persistence.AzureStorage" Version="<LATEST_ORLEANS_AZURE>" /> -->
+    <!-- <PackageVersion Include="Microsoft.Orleans.Persistence.AdoNet" Version="10.2.2" /> -->
+    <!-- Community provider; verify Orleans 10 compatibility before enabling: -->
+    <!-- <PackageVersion Include="Orleans.Providers.MongoDB" Version="9.5.0" /> -->
+    <!-- <PackageVersion Include="Microsoft.Orleans.Persistence.AzureStorage" Version="10.2.2" /> -->
     <!-- Clustering — add the one matching your deployment -->
     <!-- InMemory: built-in for dev/tests -->
-    <!-- <PackageVersion Include="Microsoft.Orleans.Clustering.AdoNet" Version="<ORLEANS_VERSION>" /> -->
-    <!-- <PackageVersion Include="Microsoft.Orleans.Clustering.AzureStorage" Version="<LATEST_ORLEANS_AZURE>" /> -->
+    <!-- <PackageVersion Include="Microsoft.Orleans.Clustering.AdoNet" Version="10.2.2" /> -->
+    <!-- <PackageVersion Include="Microsoft.Orleans.Clustering.AzureStorage" Version="10.2.2" /> -->
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
        AKKA.NET  (remove this section if ACTOR_FRAMEWORK=Orleans)
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="AkkaDotNet">
-    <!-- <PackageVersion Include="Akka" Version="<AKKA_VERSION>" /> -->
-    <!-- <PackageVersion Include="Akka.Hosting" Version="<AKKA_HOSTING_VERSION>" /> -->
-    <!-- <PackageVersion Include="Akka.Cluster.Hosting" Version="<AKKA_HOSTING_VERSION>" /> -->
-    <!-- <PackageVersion Include="Akka.Persistence" Version="<AKKA_VERSION>" /> -->
-    <!-- <PackageVersion Include="Akka.TestKit.Xunit2" Version="<AKKA_VERSION>" /> -->
+    <!-- <PackageVersion Include="Akka" Version="1.5.70" /> -->
+    <!-- <PackageVersion Include="Akka.Hosting" Version="1.5.70" /> -->
+    <!-- <PackageVersion Include="Akka.Cluster.Hosting" Version="1.5.70" /> -->
+    <!-- <PackageVersion Include="Akka.Persistence" Version="1.5.70" /> -->
+    <!-- Framework-neutral test kit; keep TUnit as the test framework: -->
+    <!-- <PackageVersion Include="Akka.TestKit" Version="1.5.70" /> -->
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
        HOSTING / DI / LOGGING
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Hosting">
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="<DOTNET_EXTENSIONS_VERSION>" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="<DOTNET_EXTENSIONS_VERSION>" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="<DOTNET_EXTENSIONS_VERSION>" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="<DOTNET_EXTENSIONS_VERSION>" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="<DOTNET_EXTENSIONS_VERSION>" />
-    <PackageVersion Include="Serilog" Version="<LATEST_SERILOG>" />
-    <PackageVersion Include="Serilog.Sinks.Console" Version="<LATEST_SERILOG_CONSOLE>" />
-    <PackageVersion Include="Serilog.Extensions.Logging" Version="<LATEST_SERILOG_EXTENSIONS>" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.11" />
+    <PackageVersion Include="Serilog" Version="4.4.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
@@ -1056,10 +1087,10 @@ Distributed applications have more packages than monoliths. CPM is non-negotiabl
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Gateway">
     <!-- TCP (DotNetty): -->
-    <!-- <PackageVersion Include="DotNetty.Transport" Version="<LATEST_DOTNETTY>" /> -->
-    <!-- <PackageVersion Include="DotNetty.Codecs" Version="<LATEST_DOTNETTY>" /> -->
+    <!-- <PackageVersion Include="DotNetty.Transport" Version="0.7.6" /> -->
+    <!-- <PackageVersion Include="DotNetty.Codecs" Version="0.7.6" /> -->
     <!-- gRPC: -->
-    <!-- <PackageVersion Include="Grpc.AspNetCore" Version="<LATEST_GRPC>" /> -->
+    <!-- <PackageVersion Include="Grpc.AspNetCore" Version="2.83.0" /> -->
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
@@ -1067,35 +1098,35 @@ Distributed applications have more packages than monoliths. CPM is non-negotiabl
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Persistence">
     <!-- EF Core (keep if using relational storage for non-grain state) -->
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="<LATEST_EF>" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="<LATEST_EF>" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
     <!-- PostgreSQL: -->
-    <!-- <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="<LATEST_NPGSQL>" /> -->
+    <!-- <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" /> -->
     <!-- MongoDB: -->
-    <!-- <PackageVersion Include="MongoDB.Driver" Version="<LATEST_MONGODB>" /> -->
+    <!-- <PackageVersion Include="MongoDB.Driver" Version="3.11.0" /> -->
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
        TESTING
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Testing">
-    <PackageVersion Include="TUnit" Version="<LATEST_TUNIT>" />
-    <PackageVersion Include="NSubstitute" Version="<LATEST_NSUBSTITUTE>" />
+    <PackageVersion Include="TUnit" Version="1.65.0" />
+    <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <!-- Aspire integration testing -->
-    <PackageVersion Include="Aspire.Hosting.Testing" Version="<ASPIRE_VERSION>" />
+    <PackageVersion Include="Aspire.Hosting.Testing" Version="13.4.6" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
        BENCHMARKS (optional)
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Benchmarks">
-    <PackageVersion Include="BenchmarkDotNet" Version="<LATEST_BDN>" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
   </ItemGroup>
 
 </Project>
 ```
 
-**Agent note**: All `<LATEST_*>` and framework version placeholders must be resolved before scaffolding. Run `dotnet package search <Name> --take 1` for each or visit nuget.org. The `ASPIRE_HOSTING_ORLEANS_VERSION` is a separate version from `ASPIRE_VERSION` — as of April 2026, `Aspire.Hosting.Orleans` v13.1.1 corresponds to Aspire 13.x. Always verify current versions.
+**Agent note**: Versions above are the latest stable releases verified on **2026-08-14**. Re-check every exact package ID immediately before scaffolding with `dotnet package search <Name> --exact-match --format json`, reject prereleases unless explicitly requested, restore, and run dependency vulnerability/audit checks. No unresolved version placeholder may remain. Optional community providers require an explicit compatibility review; never invent a Microsoft package name for a community integration.
 
 ---
 
@@ -1115,8 +1146,6 @@ Settings that apply to **every single project** in the solution:
     <NeutralLanguage>en</NeutralLanguage>
 
     <TargetFramework><DOTNET_VERSION></TargetFramework>
-    <CheckEolTargetFramework>false</CheckEolTargetFramework>
-
     <LangVersion><CSHARP_VERSION></LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
@@ -1126,8 +1155,8 @@ Settings that apply to **every single project** in the solution:
     <UseArtifactsOutput>true</UseArtifactsOutput>
     <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
 
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- Enable XML documentation only in projects that publish a public API;
+         never suppress CS1591 solution-wide. -->
 
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
@@ -1137,9 +1166,6 @@ Settings that apply to **every single project** in the solution:
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
 
-    <!-- TUnit + .NET 10 SDK: required for `dotnet test` to work with MTP runner.
-         Without this property, dotnet test fails with Microsoft.Testing.Platform.MSBuild.targets error. -->
-    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
   <!-- CSharpier: formatting enforcement on every build -->
@@ -1161,7 +1187,7 @@ Settings that apply to **every single project** in the solution:
     <IsPackable>false</IsPackable>
     <!-- Enable unsafe for gateway/crypto/network projects.
          Remove if no source project uses P/Invoke or unsafe blocks. -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
   </PropertyGroup>
 
 </Project>
@@ -1187,7 +1213,7 @@ Note: test projects live under `test/` (not `src/Tests/`) because they span mult
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
     <!-- CA2007: ConfigureAwait not relevant in test code -->
     <NoWarn>$(NoWarn);CA2007</NoWarn>
   </PropertyGroup>
@@ -1200,10 +1226,22 @@ Note: test projects live under `test/` (not `src/Tests/`) because they span mult
   <!-- Common test dependencies — every test project gets these automatically -->
   <ItemGroup>
     <PackageReference Include="TUnit" />
-    <PackageVersion Include="NSubstitute" />
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)TestDefaults.cs" Link="TestDefaults.cs" />
   </ItemGroup>
 
 </Project>
+```
+
+Create `test/TestDefaults.cs`; the test-layer props link it into every test project:
+
+```csharp
+using TUnit.Core;
+
+[assembly: Timeout(30_000)]
 ```
 
 ### 3.4 Tier 3: Layer-specific overrides
@@ -1232,27 +1270,17 @@ Host projects (AppHost, ServiceDefaults, Gateway, Silo) are executables or web a
 </Project>
 ```
 
-#### `src/host/<APPNAME>.AppHost/Directory.Build.props` — Aspire AppHost only
+#### Aspire AppHost SDK placement
 
-The AppHost project has unique SDK requirements:
+Do not create a folder-specific `Directory.Build.props` merely to override the SDK. Put the versioned SDK in the AppHost project declaration so restore and CI resolve the same toolchain:
 
 ```xml
-<Project>
-
-  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
-
-  <PropertyGroup>
-    <!-- Aspire AppHost SDK wraps Microsoft.NET.Sdk.Web -->
-    <Sdk>Aspire.AppHost.Sdk</Sdk>
-    <!-- AppHost is the orchestration entry point — disable some analyzer rules
-         that fire on Aspire's generated code -->
-    <NoWarn>$(NoWarn);CS8981</NoWarn>
-  </PropertyGroup>
-
+<Project Sdk="Aspire.AppHost.Sdk/13.4.6">
+  <!-- AppHost project content -->
 </Project>
 ```
 
-> **Agent note**: The Aspire AppHost SDK (`Aspire.AppHost.Sdk`) is added via workload. Do NOT set this as the top-level `<Project Sdk="...">` attribute in the `.csproj` — use the `Sdk` MSBuild property in `Directory.Build.props` to override it for this folder only.
+Aspire 9 and later use the SDK and NuGet packages directly; do not install the retired Aspire 8 workload.
 
 #### `src/benchmarks/Directory.Build.props` — Benchmark layer (optional)
 
@@ -1375,7 +1403,7 @@ Grains              → GrainInterfaces, Common, Common.Persistence
 ServiceDefaults     → Microsoft.Extensions.Hosting, OpenTelemetry
 Gateway             → GrainInterfaces, ServiceDefaults, Protocol (optional)
 Silo                → Grains, ServiceDefaults
-AppHost             → Gateway (ProjectRef), Silo (ProjectRef) — Aspire project refs only
+AppHost             → Gateway (ProjectRef), Silo (ProjectRef) — resources by default
 Tests.Grains        → GrainInterfaces, Grains (TestCluster needs impl), Common
 Tests.Integration   → AppHost (via Aspire.Hosting.Testing)
 ```
@@ -1383,31 +1411,29 @@ Tests.Integration   → AppHost (via Aspire.Hosting.Testing)
 **Critical rules**:
 
 - `GrainInterfaces` must have **zero implementation dependencies** — it defines contracts consumed by both client (Gateway) and server (Silo/Grains). If it depends on `Grains`, you have a circular reference.
-- `AppHost` uses **Aspire project references** (not regular `<ProjectReference>`). Regular project references in AppHost would make it compile-depend on every service, slowing builds dramatically. Aspire adds them as resource definitions.
+- In an AppHost project, normal project references are treated as Aspire resources by default and generate the `Projects.*` types used by `AddProject<T>()`.
 - `Grains` may reference `Common.Persistence` for repository injection. `GrainInterfaces` must NOT.
 
 ### 4.3 Aspire vs Regular Project References
 
-Orleans + Aspire have two distinct ways to reference a project:
+Aspire separates the MSBuild reference from runtime orchestration:
 
 | Context | Syntax | Effect |
 |---------|--------|--------|
-| AppHost orchestrates a service | `builder.AddProject<Projects.<APPNAME>_Gateway>("gateway")` | Aspire launches the process; no compile-time type coupling |
-| Regular code reference | `<ProjectReference Include="..." />` | MSBuild dependency; both projects compile together |
+| AppHost project reference | `<ProjectReference Include="..." />` | Generates a `Projects.*` resource type by default |
+| Runtime orchestration | `builder.AddProject<Projects.<APPNAME>_Gateway>("gateway")` | Adds and configures the process resource |
 
-The AppHost `.csproj` uses a special Aspire `<ProjectReference>` with `IsAspireProjectResource="true"`:
+The AppHost `.csproj` therefore uses ordinary project references:
 
 ```xml
 <!-- In <APPNAME>.AppHost.csproj -->
 <ItemGroup>
-  <ProjectReference Include="..\<APPNAME>.Gateway\<APPNAME>.Gateway.csproj"
-                    IsAspireProjectResource="true" />
-  <ProjectReference Include="..\<APPNAME>.Silo\<APPNAME>.Silo.csproj"
-                    IsAspireProjectResource="true" />
+  <ProjectReference Include="..\<APPNAME>.Gateway\<APPNAME>.Gateway.csproj" />
+  <ProjectReference Include="..\<APPNAME>.Silo\<APPNAME>.Silo.csproj" />
 </ItemGroup>
 ```
 
-This allows the AppHost to reference the project's type (for the `AddProject<T>()` generic parameter) without pulling in all of its transitive compile-time dependencies.
+Set `IsAspireProjectResource="false"` only when an AppHost needs a compile-time project reference that must not become an orchestrated resource.
 
 ---
 
@@ -1750,7 +1776,7 @@ The gateway is the only process that external clients connect to. It co-hosts an
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..<APPNAME>.ServiceDefaults\<APPNAME>.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\<APPNAME>.ServiceDefaults\<APPNAME>.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\grain\<APPNAME>.GrainInterfaces\<APPNAME>.GrainInterfaces.csproj" />
     <!-- Optional: protocol definitions for packet decoding -->
     <!-- <ProjectReference Include="..\..\protocol\<APPNAME>.Protocol\<APPNAME>.Protocol.csproj" /> -->
@@ -1782,8 +1808,9 @@ The gateway is the only process that external clients connect to. It co-hosts an
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Orleans.Configuration;
+using Microsoft.Extensions.Logging;
 using Serilog;
+using <ROOTNS>.ServiceDefaults;
 using <ROOTNS>.Gateway.Network;
 
 namespace <ROOTNS>.Gateway;
@@ -1801,31 +1828,17 @@ public static class Program
         {
             Log.Information("<APPNAME>.Gateway starting...");
 
-            var builder = Host.CreateDefaultBuilder(args);
-            builder.UseSerilog();
+            var builder = Host.CreateApplicationBuilder(args);
+            builder.Logging.AddSerilog(Log.Logger, dispose: false);
 
             // Aspire service defaults (OTEL, health checks, resilience)
-            builder.ConfigureServices((ctx, services) =>
-            {
-                services.AddServiceDefaults();
+            builder.AddServiceDefaults();
 
-                // Orleans client — connects to silo cluster (NOT a silo itself)
-                services.AddOrleansClient(client =>
-                {
-                    // Aspire provides cluster membership via service discovery.
-                    // In local dev, UseLocalhostClustering() or Aspire's AddOrleans() handles this.
-                    client.Configure<ClusterOptions>(options =>
-                    {
-                        options.ClusterId = ctx.Configuration["Orleans:ClusterId"] ?? "<APPNAME>-cluster";
-                        options.ServiceId = ctx.Configuration["Orleans:ServiceId"] ?? "<APPNAME>";
-                    });
-                    // TODO: Replace with your clustering provider (AdoNet, AzureStorage, etc.)
-                    // For local dev: client.UseLocalhostClustering();
-                });
+            // Aspire injects the cluster identity, endpoints, and provider settings.
+            // Production providers also require their selected AddKeyed* client registrations here.
+            builder.UseOrleansClient();
 
-                // TCP server hosted service (DotNetty or similar)
-                services.AddHostedService<TcpServerService>();
-            });
+            builder.Services.AddHostedService<TcpServerService>();
 
             await builder.Build().RunAsync();
             return 0;
@@ -1843,40 +1856,74 @@ public static class Program
 }
 ```
 
-### 7.3 Starter Network Stubs
+### 7.3 Starter TCP Handshake
 
 ```csharp
 // src/host/<APPNAME>.Gateway/Network/TcpServerService.cs
+using System.Net;
+using System.Net.Sockets;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace <ROOTNS>.Gateway.Network;
 
 /// <summary>
-/// Hosted service that manages the TCP listener lifecycle.
-/// Replace the stub body with your DotNetty / System.Net.Sockets bootstrap.
+/// Minimal TCP gateway that emits a bounded readiness handshake.
+/// Replace the protocol body with the domain protocol selected during scaffolding.
 /// </summary>
-public sealed class TcpServerService : IHostedService
+public sealed class TcpServerService(
+    ILogger<TcpServerService> logger,
+    IHostEnvironment environment,
+    IConfiguration configuration) : BackgroundService
 {
-    private readonly ILogger<TcpServerService> _logger;
+    private static readonly byte[] ReadyResponse = "READY\n"u8.ToArray();
 
-    public TcpServerService(ILogger<TcpServerService> logger)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger = logger;
-    }
+        var developmentHandshakeEnabled = configuration.GetValue(
+            "Gateway:AllowInsecureDevelopmentHandshake",
+            false);
+        if (!environment.IsDevelopment() || !developmentHandshakeEnabled)
+        {
+            throw new InvalidOperationException(
+                "The starter plaintext TCP handshake requires Development plus the explicit Gateway:AllowInsecureDevelopmentHandshake opt-in. Replace it with the selected protocol's authenticated TLS boundary before production use.");
+        }
 
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("TCP server starting...");
-        // TODO: Initialize DotNetty ServerBootstrap or System.Net.Sockets listener here
-        return Task.CompletedTask;
-    }
+        var bindAddressText = configuration["Gateway:BindAddress"] ?? IPAddress.Loopback.ToString();
+        if (!IPAddress.TryParse(bindAddressText, out var bindAddress))
+        {
+            throw new InvalidOperationException($"Gateway:BindAddress '{bindAddressText}' is not a valid IP address.");
+        }
 
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("TCP server stopping...");
-        // TODO: Gracefully close all active connections
-        return Task.CompletedTask;
+        var port = configuration.GetValue<int?>("Gateway:Port") ?? 5000;
+        if (port is < 1 or > 65_535)
+        {
+            throw new InvalidOperationException($"Gateway:Port '{port}' must be between 1 and 65535.");
+        }
+
+        var listener = new TcpListener(bindAddress, port);
+        listener.Start();
+        logger.LogInformation("Development TCP gateway listening on {BindAddress}:{Port}", bindAddress, port);
+
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                using var client = await listener.AcceptTcpClientAsync(stoppingToken);
+                await using var stream = client.GetStream();
+                await stream.WriteAsync(ReadyResponse, stoppingToken);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal host shutdown.
+        }
+        finally
+        {
+            listener.Stop();
+        }
+
     }
 }
 ```
@@ -1922,10 +1969,10 @@ public sealed class TcpServerService : IHostedService
 ### 8.2 `src/host/<APPNAME>.Silo/Program.cs`
 
 ```csharp
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Orleans.Configuration;
 using Serilog;
+using Microsoft.Extensions.Logging;
+using <ROOTNS>.ServiceDefaults;
 
 namespace <ROOTNS>.Silo;
 
@@ -1942,40 +1989,13 @@ public static class Program
         {
             Log.Information("<APPNAME>.Silo starting...");
 
-            var builder = Host.CreateDefaultBuilder(args);
-            builder.UseSerilog();
+            var builder = Host.CreateApplicationBuilder(args);
+            builder.Logging.AddSerilog(Log.Logger, dispose: false);
+            builder.AddServiceDefaults();
 
-            builder.UseOrleans((ctx, silo) =>
-            {
-                silo.Configure<ClusterOptions>(options =>
-                {
-                    options.ClusterId = ctx.Configuration["Orleans:ClusterId"] ?? "<APPNAME>-cluster";
-                    options.ServiceId = ctx.Configuration["Orleans:ServiceId"] ?? "<APPNAME>";
-                });
-
-                // Development: in-memory clustering and storage (replace for production)
-                silo.UseLocalhostClustering();
-                silo.AddMemoryGrainStorage("Default");
-                silo.AddMemoryGrainStorage("PubSubStore"); // required for streams
-
-                // Production examples (uncomment as needed):
-                // silo.UseAdoNetClustering(options => options.ConnectionString = ctx.Configuration.GetConnectionString("Orleans"));
-                // silo.AddAdoNetGrainStorage("Default", options => { ... });
-
-                // Enable streams (if using Orleans Streams)
-                // silo.AddMemoryStreams("default");
-
-                // Enable reminders
-                silo.UseInMemoryReminderService();
-
-                // OTEL dashboard integration via Aspire
-                silo.UseDashboard(options => options.Port = 8888);
-            });
-
-            builder.ConfigureServices((ctx, services) =>
-            {
-                services.AddServiceDefaults();
-            });
+            // Aspire injects cluster identity, endpoints, and the provider configuration.
+            // Production providers also require their selected AddKeyed* client registrations here.
+            builder.UseOrleans();
 
             await builder.Build().RunAsync();
             return 0;
@@ -2000,26 +2020,21 @@ public static class Program
 ### 9.1 `src/host/<APPNAME>.AppHost/<APPNAME>.AppHost.csproj`
 
 ```xml
-<Project Sdk="Microsoft.NET.Sdk">
-  <!-- Note: Sdk is overridden to Aspire.AppHost.Sdk in Directory.Build.props -->
+<Project Sdk="Aspire.AppHost.Sdk/13.4.6">
 
   <PropertyGroup>
     <RootNamespace><ROOTNS>.AppHost</RootNamespace>
-    <!-- Aspire workload sets IsAspireHost=true automatically via Aspire.AppHost.Sdk -->
   </PropertyGroup>
 
-  <!-- Aspire Hosting packages -->
+  <!-- The SDK supplies Aspire.Hosting.AppHost; reference only selected integrations. -->
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting" />
     <PackageReference Include="Aspire.Hosting.Orleans" />
   </ItemGroup>
 
-  <!-- Reference all hosted services as Aspire project resources -->
+  <!-- AppHost project references are Aspire resources by default -->
   <ItemGroup>
-    <ProjectReference Include="..\<APPNAME>.Gateway\<APPNAME>.Gateway.csproj"
-                      IsAspireProjectResource="true" />
-    <ProjectReference Include="..\<APPNAME>.Silo\<APPNAME>.Silo.csproj"
-                      IsAspireProjectResource="true" />
+    <ProjectReference Include="..\<APPNAME>.Gateway\<APPNAME>.Gateway.csproj" />
+    <ProjectReference Include="..\<APPNAME>.Silo\<APPNAME>.Silo.csproj" />
   </ItemGroup>
 
 </Project>
@@ -2032,14 +2047,18 @@ using Aspire.Hosting.Orleans;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-// Backing services (add as needed per STORAGE_BACKEND)
-// var postgres = builder.AddPostgres("postgres").AddDatabase("orleans");
+if (builder.ExecutionContext.IsPublishMode)
+{
+    throw new InvalidOperationException(
+        "The generated in-memory Orleans providers cannot be published. Select and configure production clustering, storage, reminders, authentication, and TLS first.");
+}
 
-// Orleans cluster — Aspire manages cluster membership discovery
+// Development-only Orleans cluster. Replace every in-memory provider for production.
 var orleans = builder.AddOrleans("<APPNAME>-cluster")
-    .WithClustering()                   // Uses Aspire service discovery for silo membership
-    .WithGrainStorage("Default")        // In-memory (replace with AddStorageProvider for prod)
-    .WithGrainStorage("PubSubStore");   // Required if using Orleans Streams
+    .WithDevelopmentClustering()
+    .WithMemoryGrainStorage("Default")
+    .WithMemoryGrainStorage("PubSubStore")
+    .WithMemoryReminders();
 
 // Silo: pure grain host
 var silo = builder.AddProject<Projects.<APPNAME>_Silo>("<APPNAME>-silo")
@@ -2048,13 +2067,17 @@ var silo = builder.AddProject<Projects.<APPNAME>_Silo>("<APPNAME>-silo")
 
 // Gateway: client-facing host (omit if USE_GATEWAY=false)
 var gateway = builder.AddProject<Projects.<APPNAME>_Gateway>("<APPNAME>-gateway")
-    .WithReference(orleans)             // Allows gateway to locate silos via service discovery
+    .WithReference(orleans.AsClient())  // Injects client-only Orleans configuration
+    .WithEnvironment("DOTNET_ENVIRONMENT", "Development")
+    .WithEnvironment("Gateway__AllowInsecureDevelopmentHandshake", "true")
     .WaitFor(silo);                     // Gateway starts after silo is healthy
 
 builder.Build().Run();
 ```
 
-> **Agent note**: `Projects.<APPNAME>_Silo` and `Projects.<APPNAME>_Gateway` are generated by Aspire's source generator from the `IsAspireProjectResource="true"` project references in the `.csproj`. The generated type name uses underscores in place of dots (e.g., `<APPNAME>.Silo` → `<APPNAME>_Silo`).
+> **Agent note**: `Projects.<APPNAME>_Silo` and `Projects.<APPNAME>_Gateway` are generated from the AppHost project references. The generated type name uses underscores in place of dots (for example, `<APPNAME>.Silo` becomes `<APPNAME>_Silo`).
+
+The exact AppHost snippet above is a local-development baseline and intentionally fails in Aspire publish mode. When a production provider is selected, replace `WithDevelopmentClustering`, both memory storage registrations, and memory reminders with concrete supported resource providers; remove the development-only gateway environment overrides after replacing the starter handshake. Register the matching keyed resource clients in the silo/client projects, retain the parameterless `UseOrleans()` / `UseOrleansClient()` calls so Aspire owns injected configuration, and add `WaitFor(...)` dependencies for backing resources. Do not combine Aspire-injected provider configuration with a second manual localhost cluster.
 
 ### 9.3 `src/host/<APPNAME>.ServiceDefaults/Extensions.cs`
 
@@ -2073,7 +2096,7 @@ namespace <ROOTNS>.ServiceDefaults;
 
 /// <summary>
 /// Extension methods for configuring Aspire service defaults across all host projects.
-/// Every host calls services.AddServiceDefaults() in its DI setup.
+/// Every host calls builder.AddServiceDefaults() before building the host.
 /// </summary>
 public static class Extensions
 {
@@ -2137,6 +2160,8 @@ public static class Extensions
 }
 ```
 
+Web hosts must also call `app.MapDefaultEndpoints()` after `Build()`. TCP-only and worker hosts register health checks and telemetry but need a protocol-appropriate readiness probe; do not claim an HTTP `/health` endpoint unless a `WebApplication` maps it.
+
 ### 9.4 `src/host/<APPNAME>.ServiceDefaults/<APPNAME>.ServiceDefaults.csproj`
 
 ```xml
@@ -2149,10 +2174,19 @@ public static class Extensions
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.GrpcNetClient" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
   </ItemGroup>
 
 </Project>
@@ -2251,7 +2285,7 @@ public sealed class PlayerGrainTests : IDisposable
 
 ### 10.2 Aspire Integration Tests
 
-Aspire 8.0+ provides `DistributedApplicationTestingBuilder` for full-stack integration tests:
+Aspire provides `DistributedApplicationTestingBuilder` for full-stack integration tests:
 
 #### `test/<APPNAME>.Tests.Integration/<APPNAME>.Tests.Integration.csproj`
 
@@ -2286,33 +2320,30 @@ namespace <ROOTNS>.Tests.Integration;
 public sealed class AppHostTests
 {
     [Test]
-    public async Task AppHost_StartsAndReportsHealthy()
+    public async Task AppHost_StartsSelectedResources(CancellationToken cancellationToken)
     {
         await using var app = await DistributedApplicationTestingBuilder
-            .CreateAsync<Projects.<APPNAME>_AppHost>();
+            .CreateAsync<Projects.<APPNAME>_AppHost>(cancellationToken: cancellationToken);
 
-        await using var client = app.CreateHttpClient("<APPNAME>-gateway");
-
-        await app.StartAsync();
-
-        var response = await client.GetAsync("/health");
-        await Assert.That((int)response.StatusCode).IsEqualTo(200);
+        await app.StartAsync(cancellationToken);
     }
 }
 ```
 
-> **Agent note**: Aspire integration tests launch real child processes (the silo and gateway). They require the .NET 10 SDK and the Aspire workload. On CI, ensure the workload is installed in the workflow (`dotnet workload install aspire`).
+This is an explicitly labeled infrastructure smoke test. Add a protocol-specific behavioral test: HTTP calls `/health`, gRPC performs a health RPC, and TCP/WebSocket performs a bounded handshake. Never generate the HTTP assertion for the default TCP gateway.
+
+> **Agent note**: Aspire integration tests launch real child processes. They require the pinned .NET SDK and restored Aspire SDK/packages; selected resources may also require a container runtime. No legacy Aspire workload install is required.
 
 ---
 
 ## Phase 11: `Build.cs` — Task Runner
 
-**Critical pitfall**: If any forwarded command arguments begin with `-` or `--` (for example `-c`, `--no-build`, `-o`, or `--verbosity`), keep the `--` separator after `Build.cs`. `dotnet run Build.cs test -c Release` is wrong because the outer `dotnet run` consumes `-c`.
+**Invocation rule**: Use `dotnet Build.cs -- test -c Release`. The .NET 10 shorthand already identifies the file app, so `--file` is not required. Keep the single `--` boundary so option-style task arguments such as `-c` are forwarded to `Build.cs`.
 
 ```csharp
-#!/usr/bin/env dotnet
+#!/usr/bin/env -S dotnet --
 // Task runner for <APPNAME>
-// Usage: dotnet run Build.cs <command> [args]
+// Usage: dotnet Build.cs -- <command> [args]
 
 #:property PublishAot=false
 
@@ -2339,7 +2370,7 @@ switch (command)
         return 0;
 
     case "test":
-        Run("dotnet", ["test", "--solution", solutionPath, .. commandArgs], repoRoot);
+        Run("dotnet", ["test", "--solution", solutionPath, "--no-launch-profile-arguments", .. commandArgs], repoRoot);
         return 0;
 
     case "test-grains":
@@ -2364,14 +2395,6 @@ switch (command)
         Run("dotnet", ["run", "--project", appHostProject], repoRoot);
         return 0;
 
-    case "run-silo":
-        Run("dotnet", ["run", "--project", siloProject], repoRoot);
-        return 0;
-
-    case "run-gateway":
-        Run("dotnet", ["run", "--project", gatewayProject], repoRoot);
-        return 0;
-
     case "publish":
         PublishHosts(commandArgs);
         return 0;
@@ -2381,30 +2404,52 @@ switch (command)
         return 0;
 
     case "clean":
+        if (!commandArgs.Contains("--yes", StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"Dry run: would delete '{Path.Combine(repoRoot, "artifacts")}' and '{Path.Combine(repoRoot, "publish")}', then run dotnet clean.");
+            Console.WriteLine("Re-run with: clean --yes");
+            return 0;
+        }
+
         DeleteIfPresent(Path.Combine(repoRoot, "artifacts"));
         DeleteIfPresent(Path.Combine(repoRoot, "publish"));
         Run("dotnet", ["clean", solutionPath], repoRoot);
         return 0;
 
     case "rename":
-        if (commandArgs.Length < 2)
+        var renameArgs = commandArgs.Where(arg => !string.Equals(arg, "--yes", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (renameArgs.Length != 2 || !IsSafeTemplateName(renameArgs[0]) || !IsSafeTemplateName(renameArgs[1]))
         {
-            Console.Error.WriteLine("Usage: dotnet run Build.cs rename <OldName> <NewName>");
+            Console.Error.WriteLine("Usage: dotnet Build.cs -- rename <OldName> <NewName> [--yes]");
             return 1;
         }
 
-        RenameAll(repoRoot, commandArgs[0], commandArgs[1]);
+        if (!commandArgs.Contains("--yes", StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"Dry run: would rename '{renameArgs[0]}' to '{renameArgs[1]}' throughout '{repoRoot}'.");
+            Console.WriteLine("Validate in a clean temporary worktree, then re-run with --yes.");
+            return 0;
+        }
+
+        RenameAll(repoRoot, renameArgs[0], renameArgs[1]);
+        return 0;
+
+    case "help":
+    case "-h":
+    case "--help":
+        Help();
         return 0;
 
     default:
+        Console.Error.WriteLine($"Unknown command: '{command}'.");
         Help();
-        return 0;
+        return 2;
 }
 
 void RunTestProject(string projectPath, string[] arguments)
 {
     string[] forwardedArgs = arguments.Length == 0 ? ["-c", "Release", "--verbosity", "normal"] : arguments;
-    Run("dotnet", ["test", projectPath, .. forwardedArgs], repoRoot);
+    Run("dotnet", ["test", "--project", projectPath, "--no-launch-profile-arguments", .. forwardedArgs], repoRoot);
 }
 
 void PublishHosts(string[] arguments)
@@ -2480,8 +2525,7 @@ void Format(string[] arguments)
 void Help()
 {
     Console.WriteLine(
-        @"Usage: dotnet run Build.cs <command> [args]
-       dotnet run Build.cs -- <command> [args]   (use -- when forwarding option-style args)
+        @"Usage: dotnet Build.cs -- <command> [args]
 
 Commands:
     build [config]                         Build the solution (default: Debug)
@@ -2490,12 +2534,10 @@ Commands:
     test-integration [args]                Run integration tests with forwarded dotnet test args
     coverage                               Collect Cobertura coverage into artifacts/TestResults/
     run-local                              Start the Aspire AppHost
-    run-silo                               Run the silo standalone
-    run-gateway                            Run the gateway standalone
     publish [rid] [config] [args]          Publish silo and gateway artifacts
     format [check]                         Run CSharpier plus dotnet format style/analyzers
-    clean                                  Delete artifacts and publish output, then clean the solution
-    rename <OldName> <NewName>             Rename template throughout repository
+    clean [--yes]                          Preview cleanup; --yes deletes generated output
+    rename <OldName> <NewName> [--yes]     Preview rename; --yes applies it after validation
     help                                   Show this command list"
     );
 }
@@ -2508,6 +2550,13 @@ static void DeleteIfPresent(string path)
     Directory.Delete(path, recursive: true);
     Console.WriteLine($"Deleted {path}");
 }
+
+static bool IsSafeTemplateName(string value) =>
+    !string.IsNullOrWhiteSpace(value)
+    && value is not "." and not ".."
+    && value.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
+    && !value.Contains(Path.DirectorySeparatorChar)
+    && !value.Contains(Path.AltDirectorySeparatorChar);
 
 static IEnumerable<string> ProjectFiles(string repoRoot) =>
     Directory
@@ -2539,9 +2588,12 @@ static void CollectCoverage(string repoRoot, string projectPath, string coverage
 
     Run("dotnet",
         [
+            "tool",
+            "run",
             "dotnet-coverage",
+            "--",
             "collect",
-            $"dotnet test {QuoteCommandValue(projectRelativePath)} -c Release --no-build --no-restore --verbosity normal",
+            $"dotnet test --project {QuoteCommandValue(projectRelativePath)} -c Release --no-build --no-restore --no-launch-profile-arguments --verbosity normal",
             "--output",
             outputPath,
             "--output-format",
@@ -2778,37 +2830,34 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
-      - name: Install Aspire workload
-        run: dotnet workload install aspire
-
       - name: Build
-        run: dotnet run Build.cs build ${{ matrix.configuration }}
+        run: dotnet Build.cs -- build ${{ matrix.configuration }}
 
       - name: Test (grain unit tests)
         run: >
-          dotnet run Build.cs --
+          dotnet Build.cs --
           test-grains
           -c ${{ matrix.configuration }}
           --no-build
           --verbosity normal
 
       # Integration tests (Aspire) run only on ubuntu-latest to reduce cost.
-      # They boot real processes and require Docker or the Aspire workload.
+      # They boot real processes and may require a container runtime for selected resources.
       - name: Test (integration)
         if: matrix.os == 'ubuntu-latest' && matrix.configuration == 'Debug'
         run: >
-          dotnet run Build.cs --
+          dotnet Build.cs --
           test-integration
           -c ${{ matrix.configuration }}
           --no-build
@@ -2819,24 +2868,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
-      - name: Install Aspire workload
-        run: dotnet workload install aspire
-
       - name: Collect coverage
-        run: dotnet run Build.cs coverage
+        run: dotnet Build.cs -- coverage
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -2861,19 +2907,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
       - name: Verify formatting
-        run: dotnet run Build.cs format check
+        run: dotnet Build.cs -- format check
 
   publish:
     needs: [build-and-test, coverage, format]
@@ -2882,19 +2928,16 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-
-      - name: Install Aspire workload
-        run: dotnet workload install aspire
 
       - name: Set version
         id: version
@@ -2903,7 +2946,7 @@ jobs:
       # Publish each host as a self-contained linux-x64 artifact
       - name: Publish hosts
         run: >
-          dotnet run Build.cs --
+          dotnet Build.cs --
           publish
           linux-x64
           Release
@@ -2929,29 +2972,31 @@ jobs:
 
 **Key differences from the monolith CI**:
 
-- `dotnet workload install aspire` step is required on every runner
+- No legacy Aspire workload install is required; the versioned AppHost SDK and packages restore with the project
 - Grain unit tests and Aspire integration tests are separated — integration tests run only on ubuntu/Debug to reduce cost
 - Publish builds each host separately (`Silo`, `Gateway`) as independent artifacts
 - Coverage runs in a dedicated ubuntu job; Codecov upload happens only when `CODECOV_TOKEN` is configured
 - No NuGet pack/push — this is a distributed application, not a library
 
-**Agent note — resolving `<PINNED-SHA>` placeholders**: The SHA lookup table is pre-populated:
+**Immutable action pins**: The workflow is pre-populated with verified full commit SHAs:
 
 | Action                        | Pinned to version | SHA                                        | Last verified |
 | ----------------------------- | ----------------- | ------------------------------------------ | ------------- |
-| `step-security/harden-runner` | v2.19.4           | `9af89fc71515a100421586dfdb3dc9c984fbf411` | 2026-06-10    |
-| `actions/checkout`            | v6.0.3            | `df4cb1c069e1874edd31b4311f1884172cec0e10` | 2026-06-10    |
-| `actions/setup-dotnet`        | v5.3.0            | `9a946fdbd5fb07b82b2f5a4466058b876ab72bb2` | 2026-06-10    |
-| `codecov/codecov-action`      | v7.0.0            | `fb8b3582c8e4def4969c97caa2f19720cb33a72f` | 2026-06-10    |
-| `actions/upload-artifact`     | v7.0.1            | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | 2026-06-10    |
-| `actions/download-artifact`   | v8.0.1            | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-06-10    |
+| `step-security/harden-runner` | v2.20.1           | `b09bb98e06d4d774595224525879c09bc6e98c40` | 2026-08-14    |
+| `actions/checkout`            | v7.0.1            | `3d3c42e5aac5ba805825da76410c181273ba90b1` | 2026-08-14    |
+| `actions/setup-dotnet`        | v6.0.0            | `a98b56852c35b8e3190ac28c8c2271da59106c68` | 2026-08-14    |
+| `codecov/codecov-action`      | v7.0.0            | `fb8b3582c8e4def4969c97caa2f19720cb33a72f` | 2026-08-14    |
+| `actions/upload-artifact`     | v7.0.1            | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | 2026-08-14    |
+| `actions/download-artifact`   | v8.0.1            | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-08-14    |
 
-If any of these are stale at scaffold time, resolve the latest SHA via:
+Re-verify a deliberately selected release and its commit object at scaffold time:
 
 ```shell
-git ls-remote --tags https://github.com/actions/checkout | tail -1
-# Or visit: https://github.com/actions/checkout/releases
+git ls-remote --tags https://github.com/actions/checkout "refs/tags/v7.0.1" "refs/tags/v7.0.1^{}"
+# Confirm at https://github.com/actions/checkout/releases
 ```
+
+Pin the peeled commit for annotated tags and the tag target for lightweight tags; never pin a tag-object SHA. If an exact 40-character commit SHA cannot be verified, stop scaffolding the workflow. Floating tags and TODO fallbacks are prohibited.
 
 ### 13.2 `.github/dependabot.yml`
 
@@ -2980,19 +3025,19 @@ Before declaring the scaffold complete, verify:
 
 ### Build and Test
 
-- [ ] `dotnet workload install aspire` succeeds on the development machine
-- [ ] `dotnet run Build.cs build Debug` passes with zero warnings
-- [ ] `dotnet run Build.cs build Release` passes with zero warnings
-- [ ] `dotnet run Build.cs -- test-grains -c Release --verbosity normal` passes (all grain tests)
-- [ ] `dotnet run Build.cs -- test-integration -c Debug --verbosity normal` passes when Aspire prerequisites are available
-- [ ] `dotnet run Build.cs -- test -c Release` passes
-- [ ] README, CONTRIBUTING, AGENTS, and workflow commands that forward option-style args to `Build.cs` use the `dotnet run Build.cs -- ...` form
-- [ ] `dotnet run Build.cs coverage` writes Cobertura XML to `artifacts/TestResults/`
-- [ ] `dotnet run Build.cs format check` passes (runs both CSharpier + dotnet format)
+- [ ] The versioned AppHost SDK and Aspire packages restore without installing the legacy Aspire workload
+- [ ] `dotnet Build.cs -- build Debug` passes with zero warnings
+- [ ] `dotnet Build.cs -- build Release` passes with zero warnings
+- [ ] `dotnet Build.cs -- test-grains -c Release --verbosity normal` passes (all grain tests)
+- [ ] `dotnet Build.cs -- test-integration -c Debug --verbosity normal` passes when Aspire prerequisites are available
+- [ ] `dotnet Build.cs -- test -c Release` passes
+- [ ] README, CONTRIBUTING, AGENTS, and workflow commands that forward option-style args to `Build.cs` use the `dotnet Build.cs -- ...` form
+- [ ] `dotnet Build.cs -- coverage` writes Cobertura XML to `artifacts/TestResults/`
+- [ ] `dotnet Build.cs -- format check` passes (runs both CSharpier + dotnet format)
 
 ### Local Run
 
-- [ ] `dotnet run Build.cs run-local` starts the Aspire AppHost without errors
+- [ ] `dotnet Build.cs -- run-local` starts the Aspire AppHost without errors
 - [ ] The Aspire dashboard is accessible at `http://localhost:18888` (or the configured port)
 - [ ] Silo appears healthy in the Aspire dashboard
 - [ ] Gateway appears healthy (if applicable)
@@ -3016,13 +3061,13 @@ Before declaring the scaffold complete, verify:
 
 - [ ] `.slnx` lists every `.csproj` in the repository
 - [ ] Solution folders match the `src/` and `test/` directory layout
-- [ ] AppHost references hosts via `IsAspireProjectResource="true"` (not regular `ProjectReference`)
+- [ ] AppHost uses ordinary project references for hosted resources and only opts out with `IsAspireProjectResource="false"` intentionally
 - [ ] `Directory.Packages.props` has no placeholder versions — all resolved to real values
 - [ ] `GrainInterfaces` does NOT reference `Grains`
 
 ### CI and Repository Health
 
-- [ ] All action SHAs in `.github/workflows/dotnet.yml` are 40-char hashes
+- [ ] All action references in `.github/workflows/dotnet.yml` are verified 40-character commit SHAs; no floating tag remains
 - [ ] `.github/dependabot.yml` exists with both `github-actions` and `nuget` ecosystems
 - [ ] `SECURITY.md` exists
 - [ ] `CONTRIBUTING.md` exists
@@ -3032,8 +3077,8 @@ Before declaring the scaffold complete, verify:
 
 ### Task Runner
 
-- [ ] `dotnet run Build.cs help` prints the command list without errors
-- [ ] `dotnet run Build.cs rename <APPNAME> TestRename` runs without errors; revert with `dotnet run Build.cs rename TestRename <APPNAME>`
+- [ ] `dotnet Build.cs -- help` prints the command list without errors
+- [ ] `dotnet Build.cs -- rename <APPNAME> TestRename` reports a dry-run plan; apply and revert only in a clean temporary worktree with `--yes`
 
 ### Solution Filters
 
@@ -3064,7 +3109,6 @@ Before declaring the scaffold complete, verify:
 │   ├── host/
 │   │   ├── Directory.Build.props                       ← Tier 3 (OutputType=Exe)
 │   │   ├── <APPNAME>.AppHost/
-│   │   │   ├── Directory.Build.props                   ← Aspire.AppHost.Sdk override
 │   │   │   ├── <APPNAME>.AppHost.csproj
 │   │   │   └── Program.cs
 │   │   ├── <APPNAME>.ServiceDefaults/
@@ -3156,11 +3200,11 @@ Before declaring the scaffold complete, verify:
 | Scenario | Change |
 | -------- | ------ |
 | No gateway (internal-only system) | Remove `<APPNAME>.Gateway/`; remove from AppHost `AddProject<>()` call; delete `Gateway.slnf` |
-| Multi-silo cluster | Increase `WithReplicas(n)` in AppHost; replace `UseLocalhostClustering()` with a real provider (AdoNet, AzureStorage) |
-| PostgreSQL storage backend | Add `Orleans.Persistence.AdoNet` + `Npgsql` to `Directory.Packages.props`; replace `AddMemoryGrainStorage("Default")` with `AddAdoNetGrainStorage`; add `Orleans.Clustering.AdoNet` |
-| MongoDB storage backend | Add `Orleans.Persistence.MongoDB`; configure in Silo `Program.cs` |
-| Orleans Streams (pub/sub between grains) | Add `Microsoft.Orleans.Streaming` to Grains; `AddMemoryStreams("default")` in Silo; `AddOrleans(...).WithStreaming()` in AppHost |
-| Orleans Reminders (durable timers) | Built-in in `Microsoft.Orleans.Reminders`; `UseInMemoryReminderService()` in Silo for dev; `UseAdoNetReminderService()` for prod |
+| Multi-silo cluster | Increase `WithReplicas(n)` only after replacing `WithDevelopmentClustering()` and all memory providers with production-capable resources |
+| PostgreSQL storage backend | Add `Microsoft.Orleans.Persistence.AdoNet`, `Microsoft.Orleans.Clustering.AdoNet`, and Npgsql after compatibility review; configure the ADO.NET providers and resource readiness explicitly |
+| MongoDB storage backend | No verified Orleans 10 provider is enabled by default; select a community provider only after an explicit compatibility, maintenance, and migration review |
+| Orleans Streams (pub/sub between grains) | Add `Microsoft.Orleans.Streaming`; use `.WithMemoryStreaming("default")` only for development, or configure a supported durable stream resource for production |
+| Orleans Reminders (durable timers) | Use `.WithMemoryReminders()` only for development; configure a supported durable reminder resource and matching keyed client for production |
 | Orleans Transactions (ACID across grains) | Add `Microsoft.Orleans.Transactions`; annotate methods with `[Transaction(TransactionOption.Create)]`; configure in Silo |
 | gRPC gateway instead of TCP | Use `Grpc.AspNetCore` in Gateway; `Microsoft.NET.Sdk.Web` SDK; generate `.proto` contracts from `<APPNAME>.Protocol/` |
 | Akka.NET instead of Orleans | Replace `grain/` with `actors/` (`<APPNAME>.Messages/` + `<APPNAME>.Actors/`); use `Akka.Hosting` for DI; `TestKit` for tests; `Akka.Cluster.Hosting` for distributed deployment |
@@ -3168,12 +3212,12 @@ Before declaring the scaffold complete, verify:
 | Multiple silo types (different grain sets) | Create additional silo projects (`<APPNAME>.Silo.Analytics/`); each references only the grain DLLs it needs; prevents loading unnecessary grains |
 | Orleans grain versioning for rolling upgrades | Add `[Version(n)]` attribute to grain interfaces; configure `VersioningOptions` in Silo; test with `TestClusterBuilder` and `ISiloBuilder.ConfigureApplicationParts` |
 | Admin / dashboard API | Add `<APPNAME>.Admin/` host under `src/host/`; register as Aspire project; uses `IClusterClient` (Orleans client) to query grain state |
-| Plugin extension system | Add `<APPNAME>.Sdk/` library with Orleans grain interface contracts; mark as `<IsPackable>true</IsPackable>`; external plugins reference this via NuGet |
+| Plugin extension system | Add a packable `<APPNAME>.Sdk/` contract library. If it publishes to nuget.org, use a protected release environment and immutable `NuGet/login` OIDC pin; request the temporary key immediately before push and do not default to a long-lived API key. |
 | Docker image builds | Add `Dockerfile` per host at `src/host/<APPNAME>.Silo/Dockerfile`; use `builder.AddDockerfile("silo", "src/host/<APPNAME>.Silo")` in AppHost |
-| Windows deployment | Add `win-x64` to publish matrix; ensure `UseLocalhostClustering` is replaced for multi-machine |
+| Windows deployment | Add `win-x64` to the publish matrix; replace `WithDevelopmentClustering()` and all memory providers before any multi-machine deployment |
 | CI runs too slowly | Run grain unit tests on all matrix; run Aspire integration tests only on `ubuntu-latest:Debug` (already in template) |
-| Orleans dashboard | `silo.UseDashboard(options => options.Port = 8888)` in Silo `Program.cs`; already included in template |
-| Need code coverage | TUnit bundles `Microsoft.Testing.Extensions.CodeCoverage` — no extra packages. Add `--coverage --coverage-output-format cobertura` to `dotnet test` steps in CI. Do NOT use `coverlet.collector` — it is a VSTest data collector and incompatible with TUnit's MTP runner. |
+| Orleans-specific dashboard | Add and pin a compatible Orleans dashboard package explicitly; Aspire already supplies the application dashboard, so do not call an undeclared `UseDashboard` extension |
+| Need code coverage | Use `dotnet Build.cs -- coverage`, which invokes the pinned `dotnet-coverage` local tool and writes deterministic Cobertura files for the TUnit test projects. |
 
 ---
 
@@ -3181,7 +3225,7 @@ Before declaring the scaffold complete, verify:
 
 1. **Do not put grain implementations in `GrainInterfaces`**. Interfaces define contracts; implementations depend on them. Reversing this creates a circular reference and forces the Gateway to compile grain implementation code it should never see.
 
-2. **Do not use regular `<ProjectReference>` in AppHost for hosted services**. Always use `IsAspireProjectResource="true"`. Regular references pull in all transitive dependencies at compile time and destroy incremental build performance.
+2. **Do not disable Aspire resource generation accidentally**. AppHost project references are resources by default; set `IsAspireProjectResource="false"` only for a deliberate compile-time-only reference.
 
 3. **Do not call another grain from within `OnActivateAsync` unless absolutely necessary**. Grain-to-grain calls during activation can deadlock if both grains activate simultaneously and call each other. Load data from repositories; call other grains from normal methods only.
 
@@ -3199,6 +3243,6 @@ Before declaring the scaffold complete, verify:
 
 10. **Do not create more silo projects than necessary**. Start with one `Silo` project. Split only when you need different grain sets, different storage configurations, or different placement strategies for performance isolation.
 
-11. **Do not skip the `dotnet workload install aspire` step**. The Aspire AppHost SDK is not part of the base .NET 10 SDK — without the workload installed, AppHost will fail to build with cryptic SDK resolution errors.
+11. **Do not install the retired Aspire workload**. Pin the versioned `Aspire.AppHost.Sdk` in the project and keep its Aspire package train aligned; the legacy workload applies to Aspire 8 and older.
 
 12. **Do not run bare `dotnet format --verify-no-changes`**. The `whitespace` sub-check rewrites CSharpier's Allman-style brace formatting, causing CI failures on correctly formatted code. Always split into `dotnet format style --verify-no-changes` + `dotnet format analyzers --verify-no-changes`.

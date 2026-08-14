@@ -1,4 +1,4 @@
-# Agent Guide: Creating a "nietras-quality" Initial .NET Library Solution
+# Agent Guide: Scaffolding a Production-Grade .NET Library Solution
 
 > **Purpose**: Step-by-step instructions for an AI agent to scaffold a new .NET library solution (one or more NuGet-publishable libraries) matching the engineering standards demonstrated in the `nietras/CudaSharp` and `nietras/Sep` repositories.
 > **Inputs required from user before starting**: library name, one-sentence description, primary namespace, target audience, whether AOT compatibility is required, whether the library wraps a native library.
@@ -16,9 +16,9 @@ Ask the user for (or infer from context):
 | `ROOTNS`          | `CudaSharp`                      | Usually same as LIBNAME                                                                                                            |
 | `DESCRIPTION`     | `Low-level CUDA interop in C#`   | One sentence, goes in .csproj and README                                                                                           |
 | `AUTHOR`          | `yourname`                       | GitHub username                                                                                                                    |
-| `DOTNET_VERSION`  | `net10.0`                        | Usually latest; use `net8.0` for LTS requirement                                                                                   |
-| `CSHARP_VERSION`  | `14.0`                           | Match to chosen .NET version                                                                                                       |
-| `SDK_VERSION`     | `10.0.103`                       | Exact SDK version from `dotnet --version`                                                                                          |
+| `DOTNET_VERSION`  | `net10.0`                        | Current LTS default; use `net8.0` only for an explicit compatibility or multi-targeting requirement                                |
+| `CSHARP_VERSION`  | `14.0`                           | Match the pinned SDK and validate features against the lowest target framework                                                     |
+| `SDK_VERSION`     | `10.0.400`                       | Current stable .NET 10 SDK feature band (verified 2026-08-14); re-check before scaffolding                                         |
 | `NEEDS_UNSAFE`    | `true`                           | true for P/Invoke, bit manipulation, SIMD                                                                                          |
 | `NEEDS_AOT`       | `true`                           | true for any library intended for NativeAOT use                                                                                    |
 | `WRAPS_NATIVE`    | `true`                           | true if P/Invoking a native .dll/.so                                                                                               |
@@ -34,7 +34,7 @@ Ask the user for (or infer from context):
 
 ## Phase 0b: Initialize Git Repository
 
-Before creating any files, initialize the repository. MinVer, `.gitattributes`, and the validation checklist all require a git repo:
+Initialize Git only when the user explicitly requested repository initialization. First resolve the exact target directory and inspect for an existing repository or user files; never run these commands in a populated directory implicitly. Otherwise skip Git mutations and present the commands as optional handoff steps. MinVer validation still requires a repository before packing:
 
 ```shell
 mkdir <LIBNAME> && cd <LIBNAME>
@@ -48,24 +48,12 @@ git config user.name   # must print the real name, not a placeholder
 git config user.email  # must print the real email / GitHub-linked address
 ```
 
-If the output is wrong (e.g., shows a machine hostname, "bia10@github.com", or is empty), fix it before committing:
-
-```shell
-# Fix locally (this repo only):
-git config user.name  "Your Name"
-git config user.email "you@example.com"
-
-# Or remove a local override and fall back to global:
-git config --unset user.name
-git config --unset user.email
-```
-
-> **Agent note**: Do not set or override `user.name`/`user.email` yourself. Verify they're correct and flag any mismatch to the user before proceeding.
+If the output is wrong or empty, stop before committing and ask the user to correct it. Agents must not set, unset, or override `user.name` or `user.email`.
 
 **Run CSharpier before the first commit.** After all source files are created but before any `git add`, install local tools and format:
 
 ```shell
-dotnet tool restore          # installs CSharpier from .config/dotnet-tools.json
+dotnet tool restore          # installs pinned CSharpier and dotnet-coverage local tools
 dotnet csharpier format .    # format all .cs files in place
 dotnet format style          # fix naming / using-directive style
 dotnet format analyzers      # fix Roslyn analyzer violations
@@ -75,7 +63,7 @@ Skipping this step is the single most common cause of post-scaffold "fix formatt
 
 ### Branch and PR workflow
 
-Create a scoped branch before adding source changes:
+If branch creation was explicitly authorized, create a scoped branch before adding source changes:
 
 ```shell
 git checkout -b feature/<scope>-<summary>
@@ -93,11 +81,11 @@ git add -A
 git commit -m "chore(repo): bootstrap initial scaffold"
 ```
 
-After the first green push, open a **draft** pull request, link the related issue in the PR body when one exists (`Fixes #123`), and keep review, verification, and remediation commits on that same branch until the PR is ready for human merge review.
+When the user also authorized pushing and opening a PR, open a **draft** after the first green push, link the related issue when one exists (`Fixes #123`), and keep review/remediation commits on the same head branch. Scaffolding authorization alone does not authorize a push or PR.
 
 **Why**: MinVer computes versions from git tag distance — without a repo and at least one commit, `dotnet pack` fails. `.gitattributes` line-ending rules only apply to tracked files. The `Build.cs rename` validation step in Phase 13 also requires a working tree. Draft PRs surface CI and review context early without forcing immediate merge review.
 
-### Recommended commit strategy
+### Recommended commit strategy (only when commits are authorized)
 
 Rather than a single monolithic "Initial scaffold" commit, use three logical commits to keep the history readable:
 
@@ -107,7 +95,8 @@ git add .editorconfig .csharpierrc.json .gitattributes .gitignore .jscpd.json .m
     .pre-commit-config.yaml .config/ codecov.yml global.json nuget.config \
   LICENSE SECURITY.md CONTRIBUTING.md AGENTS.md CHANGELOG.md \
     .github/FUNDING.yml .github/ISSUE_TEMPLATE/ .github/PULL_REQUEST_TEMPLATE.md \
-    Icon.png README.md <LIBNAME>.slnx
+    README.md <LIBNAME>.slnx
+# Add Icon.png only when the user supplied the validated asset.
 git commit -m "chore(repo): add root config and repository health files"
 
 # Commit 2: Source projects and task runner (Phases 2–8, 10–11)
@@ -133,11 +122,14 @@ git commit -m "ci(github): add Actions workflow and Dependabot"
     "version": "<SDK_VERSION>",
     "rollForward": "latestPatch",
     "allowPrerelease": false
+  },
+  "test": {
+    "runner": "Microsoft.Testing.Platform"
   }
 }
 ```
 
-**Why**: Pins the exact SDK so every developer, every CI runner, and every contributor uses identical tooling. `latestPatch` allows security patches without re-pinning while preventing accidental major SDK upgrades.
+**Why**: Pins a stable SDK feature band and selects the runner required by TUnit for every test project. `latestPatch` accepts newer servicing patches only within the selected feature band; it does not silently move `10.0.1xx` to `10.0.4xx`. Update `SDK_VERSION` deliberately after validation.
 
 ---
 
@@ -221,7 +213,7 @@ insert_final_newline = true
 end_of_line = lf
 charset = utf-8-bom
 
-# Build.cs task runner — BOM would break the Unix shebang (#!/usr/bin/env dotnet)
+# Build.cs task runner — BOM would break the Unix shebang (#!/usr/bin/env -S dotnet --)
 [Build.cs]
 charset = utf-8
 
@@ -332,11 +324,11 @@ dotnet_diagnostic.MA0051.severity = none
 ```yaml
 repos:
   - repo: https://github.com/gitleaks/gitleaks
-    rev: <LATEST_GITLEAKS_TAG>
+    rev: 6eaad039603a4de39fddd1cf5f727391efe9974e # v8.30.0; v8.30.1 has a detection regression
     hooks:
       - id: gitleaks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: <LATEST_PRECOMMIT_HOOKS_TAG>
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -353,7 +345,7 @@ repos:
 
 **Prerequisite**: `pre-commit` is a Python tool. Install via `pip install pre-commit` (or `pipx install pre-commit`). If Python is not available on the system, skip this file — the CI format job and `.editorconfig` still enforce style. Add a note in the README's "Development" section about this optional dependency.
 
-> **Hook versions**: Like package versions, the `rev:` values are placeholder tags (`<LATEST_GITLEAKS_TAG>`, `<LATEST_PRECOMMIT_HOOKS_TAG>`). Resolve them via `git ls-remote --tags https://github.com/gitleaks/gitleaks | tail -1` or visit the respective GitHub release pages.
+> **Hook versions**: Pins are immutable commit SHAs with release comments. The Gitleaks pin deliberately stays at v8.30.0 because v8.30.1 has a confirmed regression that can miss known secrets; re-evaluate this documented security exception when a fixed release ships. Never select a release by sorting raw `git ls-remote` output.
 
 ---
 
@@ -433,12 +425,12 @@ Thank you for considering contributing!
 ## How to Contribute
 
 1. Fork the repository and create a feature branch from `main`.
-2. Run `dotnet run Build.cs format` to restore local tools (CSharpier + dotnet-coverage) and normalize formatting.
+2. Run `dotnet Build.cs -- format` to restore local tools (CSharpier + dotnet-coverage) and normalize formatting.
 3. Ensure your code passes all checks:
    ```shell
-   dotnet run Build.cs build Release
-   dotnet run Build.cs -- test -c Release
-   dotnet run Build.cs format check
+   dotnet Build.cs -- build Release
+   dotnet Build.cs -- test -c Release
+   dotnet Build.cs -- format check
    ```
 4. Open a Pull Request against `main` with a clear description of the change.
 
@@ -446,7 +438,7 @@ Thank you for considering contributing!
 
 This project enforces formatting via **CSharpier** (opinionated C# formatter) and **`dotnet format`** (code style analyzers). CI will reject PRs with formatting violations.
 
-- **Auto-format before committing**: run `dotnet run Build.cs format`, which restores local tools, runs CSharpier first, then runs `dotnet format style` and `dotnet format analyzers` project-by-project. Never run bare `dotnet format` — the `whitespace` sub-check overwrites CSharpier's Allman-style brace formatting.
+- **Auto-format before committing**: run `dotnet Build.cs -- format`, which restores local tools, runs CSharpier first, then runs `dotnet format style` and `dotnet format analyzers` project-by-project. Never run bare `dotnet format` — the `whitespace` sub-check overwrites CSharpier's Allman-style brace formatting.
 - IDE integration: Install the CSharpier extension for [VS Code](https://marketplace.visualstudio.com/items?itemName=csharpier.csharpier-vscode), [Visual Studio](https://marketplace.visualstudio.com/items?itemName=csharpier.CSharpier), or [Rider](https://plugins.jetbrains.com/plugin/18243-csharpier) for format-on-save.
 
 ## Reporting Issues
@@ -486,6 +478,8 @@ Before changing code, agents MUST identify the behavior or technical outcome bei
 
 Agents MUST minimize blast radius: prefer the smallest coherent change, preserve existing architecture and style, keep unrelated refactors out, avoid broad rewrites and mass formatting, and add abstractions only when there is a real boundary or repeated need.
 
+Before editing, inspect repository status. Existing modifications and untracked files belong to the user unless the task says otherwise. Agents MUST preserve them, MUST NOT silently overwrite or discard them, and MUST stop and report any overlap that cannot be resolved safely.
+
 Agents MUST NOT hand-edit generated files unless required, change public APIs or persisted contracts without calling out migration impact, hide uncertainty behind TODOs or broad fallbacks, or claim validation that was not run.
 
 ## 3. Repository Discovery
@@ -493,6 +487,8 @@ Agents MUST NOT hand-edit generated files unless required, change public APIs or
 Before implementation, inspect the repository source of truth instead of guessing. Check the relevant subset of `global.json`, `Directory.Build.props`, `Directory.Build.targets`, `.editorconfig`, solution files, affected `*.csproj` files, README/CONTRIBUTING/local docs, CI workflows, nearby tests, and existing patterns for dependency injection, logging, options, validation, errors, persistence, and test style.
 
 Agents MUST determine the configured .NET SDK, target framework, nullable setting, implicit usings setting, analyzer configuration, and `LangVersion` before introducing modern C# syntax. Do not use a language feature the repository does not enable unless the task includes upgrading language settings.
+
+On native Windows, treat shell invocations as expensive. Batch bounded, related read-only inspections; prefer `rg`, `rg --files`, `bat`, `git`, and `dotnet` over PowerShell object pipelines; use `rg -n -C 8` for context and `bat --line-range` for source ranges; and never use `Get-Content | Select-Object -Skip/-First` for source inspection. Scope builds and tests to the smallest affected project, use `--no-restore` only when dependencies are unchanged and restore already succeeded, iterate in Debug unless Release behavior matters, and do not run a full solution build or test suite after every small edit.
 
 ## 4. Modern C# and .NET
 
@@ -534,46 +530,54 @@ Agents MUST NOT disable authentication, authorization, HTTPS, certificate valida
 
 Tests must catch defects, document behavior, and enable safe change. Coverage numbers are secondary.
 
-Every test MUST fail if the behavior it claims to verify is removed or meaningfully broken. Delete or rewrite tests that only verify mocks, repeat implementation details, pass when core logic is deleted, obscure behavior with excessive setup, depend on order/time/local machine state/shared mutation, or exist only for coverage.
+Every behavioral test MUST fail if the behavior it claims to verify is removed or meaningfully broken. Clearly labeled compile, wiring, health, and contract smoke tests MAY prove infrastructure rather than domain behavior, but MUST assert the boundary they name. Delete or rewrite tests that only verify test doubles, repeat implementation details, obscure behavior with excessive setup, depend on order/time/local machine state/shared mutation, or exist only for coverage.
 
 Agents MUST test observable behavior: return values, state changes, persisted effects, published messages/events, validation failures, authorization boundaries, idempotency, edge cases, cancellation, and concurrency when relevant.
 
 Agents SHOULD NOT unit test pure pass-through methods with no branching, transformation, validation, or error handling. Prefer integration tests at real boundaries.
 
-Mocks are allowed only to isolate external boundaries or expensive dependencies. If a unit test needs more than three `Mock<T>` objects, refactor the production code to reduce coupling or write an integration test.
+Test doubles are allowed only to isolate external boundaries or expensive dependencies. More than three substitutes, mocks, or fakes in one test is a coupling warning: simplify the design or prefer an integration test unless the additional doubles are clearly justified.
 
 Tests MUST be deterministic: avoid real sleeps, unseeded randomness, current time without `TimeProvider` or a fake clock, shared ports/databases/files/static mutable state, and external state that is not isolated and cleaned up.
 
 Use integration tests for routing, middleware, serialization, database mapping, transactions, queues, external clients, configuration, dependency injection wiring, and other behavior that depends on real boundaries.
 
-## 9. TUnit and Microsoft.Testing.Platform
+## 9. TUnit test execution
 
-This repository uses TUnit on Microsoft.Testing.Platform (MTP). Agents MUST NOT assume VSTest behavior.
+This repository uses TUnit exclusively. TUnit runs on Microsoft.Testing.Platform (MTP), the test runner selected by `global.json`; MTP is infrastructure, not a second test framework. Do not add another test framework or adapter.
 
-Prefer full-suite validation with:
-
-```bash
-dotnet test -c Release
-dotnet test -c Release --timeout 10m
-```
-
-Use TUnit/MTP filters instead of VSTest filters:
+Use the TUnit runner selected in the repository `global.json` and identify the solution or project explicitly:
 
 ```bash
-dotnet test -c Release --treenode-filter "/*/*/ClassName/*"
-dotnet test -c Release --treenode-filter "/*/*/*/MethodName"
-dotnet test -c Release --treenode-filter "/*/*/*/*[Category=Integration]"
-dotnet test -c Release --treenode-filter "/*/*/*/*[Category!=Slow]"
+dotnet test --solution <solution>.slnx -c Release --no-launch-profile-arguments
+dotnet test --project test/<project>/<project>.csproj -c Release --no-launch-profile-arguments --timeout 10m
 ```
 
-If the SDK or runner rejects platform arguments, forward them after `--`:
+Use TUnit filters:
 
 ```bash
-dotnet test -c Release -- --treenode-filter "/*/*/ClassName/*"
-dotnet test -c Release -- --timeout 10m
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/ClassName/*"
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/*/MethodName"
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/*/*[Category=Integration]"
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/*/*[Category!=Slow]"
 ```
 
-Agents MUST NOT use VSTest-only options such as `--filter` or `--blame-hang` unless the repository explicitly configures VSTest for that project.
+Do not probe a test executable by forwarding discovery arguments through `dotnet test`. In particular, never run `dotnet test ... -- --help`, `dotnet test ... -- -?`, or `dotnet test ... -- --list-tests`; those arguments can collide with the .NET SDK/MTP protocol. Use the owning layer directly:
+
+```bash
+dotnet test --help
+dotnet run --project <test-project> -- --help
+dotnet run --project <test-project> -- --list-tests
+```
+
+If MTP reports a protocol or fail-fast error, do not retry blindly. Inspect the evaluated launch arguments and every injection point:
+
+```bash
+dotnet msbuild <test-project> -getProperty:TestingPlatformCommandLineArguments,RunArguments,RunCommand,RunWorkingDirectory
+rg -n "TestingPlatformCommandLineArguments|RunArguments|commandLineArgs|--help|-\?|--list-tests" .
+```
+
+Then inspect `Properties/launchSettings.json`, imported props/targets, wrappers, CI, and ancestor `global.json` files. Automated tests SHOULD use `--no-launch-profile-arguments`; use `--no-launch-profile` only when the entire profile, including environment variables and working directory, must be disabled. For SDK diagnostics, set `DOTNET_CLI_TEST_TRACEFILE` to a unique path per process or agent, never a shared trace file, and inspect the trace for hidden protocol arguments.
 
 Tag tests that need filtering with stable metadata such as `[Property("Category", "Integration")]`, `[Property("Category", "Slow")]`, `[Property("Priority", "High")]`, or `[Property("Owner", "<team-or-module>")]`.
 
@@ -581,10 +585,10 @@ Every test project MUST define a default timeout, for example `[assembly: Timeou
 
 TUnit runs tests in parallel by default. Isolate shared resources or use `[NotInParallel]`, `[ParallelGroup]`, or a repository-approved limiter only when isolation is not practical. Do not disable all parallelism to hide races.
 
-For real deadlocks or non-cooperative hangs, use MTP hang dump support:
+For real deadlocks or non-cooperative hangs, first add and centrally pin the optional `Microsoft.Testing.Extensions.HangDump` package in the affected test project. Only then use MTP hang dump options; without that extension, omit `--hangdump` and `--hangdump-timeout`:
 
 ```bash
-dotnet test -c Release --timeout 10m --hangdump --hangdump-timeout 2m
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --timeout 10m --hangdump --hangdump-timeout 2m
 ```
 
 ## 10. Automation and Tooling
@@ -593,12 +597,10 @@ Bash and PowerShell are deprecated for repository automation unless explicitly a
 
 C# file-based apps MUST be single `.cs` files unless converted to a project, use top-level statements for straightforward tools, use `#:package` for NuGet dependencies, use cross-platform path APIs, return explicit exit codes, print actionable errors to stderr, support `--help` when options exist, be idempotent by default, and provide `--dry-run` for destructive operations.
 
-When invoking `Build.cs`, follow the repository's documented form. If forwarding option-style args, include the script separator, for example:
+Use the .NET 10 file-app shorthand and forward task-runner arguments after `--`. The shorthand identifies `Build.cs` unambiguously, so `--file` is unnecessary; the separator keeps options such as `-c` and `--yes` from being consumed by the `dotnet` host:
 
 ```bash
-dotnet run Build.cs -- test -c Release
-# or, for SDKs using explicit file mode:
-dotnet run --file Build.cs -- test -c Release
+dotnet Build.cs -- test -c Release
 ```
 
 Automation MUST NOT delete, overwrite, or migrate data without `--dry-run` and confirmation, depend on developer-machine paths, require undocumented global tools, store secrets, or hide failing external commands.
@@ -614,6 +616,8 @@ Use Conventional Commits:
 The type and scope MUST be lowercase, the scope is mandatory, the description uses imperative present tense and has no trailing period, and each commit should contain one logical change. Do not add AI co-authors unless the repository explicitly requires it.
 
 Allowed types: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`, `chore`, and `tool`.
+
+Agents MUST NOT create or switch branches, commit, amend, rebase, push, publish packages, open pull requests, or change Git identity unless the user explicitly authorizes that action. When authorization is given, preserve the user's worktree and keep review/remediation work on the current PR head.
 
 Agent-created branches MUST use one of these prefixes: `feature/`, `fix/`, `docs/`, `refactor/`, `test/`, `perf/`, `ci/`, `build/`, `chore/`, `tool/`, or `research/`. Include an issue number when one exists, for example `feature/issue-123-add-oauth-provider`.
 
@@ -636,8 +640,10 @@ Before final delivery, verify:
 - Nullable and analyzer warnings remain clean.
 - Code follows repository patterns for DI, async, cancellation, errors, logging, and security.
 - Tests assert behavior rather than implementation details.
-- TUnit filters, timeouts, cancellation, and parallelism controls use MTP-compatible options.
+- TUnit filters, timeouts, cancellation, and parallelism controls use the repository's native runner options.
+- Automated `dotnet test` commands identify a project or solution, use `--no-launch-profile-arguments`, and do not forward help/list arguments.
 - New automation is a C# file-based app when applicable.
+- Existing user changes remain intact and no Git or publishing action exceeded the user's authorization.
 - Final response includes exact validation results.
 - Proposed commit message follows `type(scope): description`.
 
@@ -650,7 +656,7 @@ Agents MUST NOT introduce mock-only tests, tests that pass when production logic
 If an agent violates this standard, it MUST immediately identify the violated rule, revert or replace the offending change, provide a compliant implementation, add or update tests proving the corrected behavior, re-run relevant validation, and state the remediation clearly.
 ````
 
-**Why**: This gives every scaffolded repository a consistent root-level agent contract covering delivery discipline, repository discovery, modern C# standards, behavior-focused testing, TUnit/MTP execution, safe automation, security, commits, and final response expectations without overloading the agent context window.
+**Why**: This gives every scaffolded repository a consistent root-level agent contract covering delivery discipline, repository discovery, modern C# standards, behavior-focused TUnit testing, safe automation, security, commits, and final response expectations without overloading the agent context window.
 
 **Agent note**: A weak `AGENTS.md` is a scaffold bug. Copy this contract, or adapt the user's stronger house standard to the new repository. Keep the root file concise; move deep project-specific guidance to linked docs instead of inflating `AGENTS.md`.
 
@@ -688,16 +694,20 @@ github: [<AUTHOR>]
   "isRoot": true,
   "tools": {
     "csharpier": {
-      "version": "<LATEST_CSHARPIER>",
+      "version": "1.3.0",
       "commands": ["csharpier"]
+    },
+    "dotnet-coverage": {
+      "version": "18.10.0",
+      "commands": ["dotnet-coverage"]
     }
   }
 }
 ```
 
-**Why**: Establishes the local tool manifest from day one with **CSharpier** pre-installed. `dotnet tool restore` after clone installs CSharpier immediately — no manual setup required. CSharpier is an opinionated C# formatter (like Prettier for C#) that enforces consistent formatting across the entire codebase without bikeshedding over brace placement or line wrapping.
+**Why**: Establishes the local tool manifest from day one with pinned CSharpier and dotnet-coverage commands. `dotnet tool restore` after clone installs both reproducibly; verify their exact stable versions before scaffolding.
 
-> **Resolving `<LATEST_CSHARPIER>`**: Run `dotnet package search csharpier --take 1` or visit [nuget.org/packages/CSharpier](https://www.nuget.org/packages/CSharpier/).
+> **Pin discipline**: CSharpier and dotnet-coverage were verified on 2026-08-14. Re-check both exact package IDs before scaffolding; do not emit floating versions or unresolved placeholders.
 
 ---
 
@@ -761,7 +771,7 @@ A clear and concise description of what you expected to happen.
 **Environment**
 
 - OS: [e.g. Windows 11, Ubuntu 24.04]
-- .NET version: [e.g. 10.0.3]
+- .NET runtime version: [e.g. 10.0.11]
 - <LIBNAME> version: [e.g. 1.2.3]
 
 **Additional context**
@@ -800,9 +810,9 @@ Add any other context about the feature request here.
 
 ## Test plan
 
-- [ ] `dotnet run Build.cs build Release` passes with zero warnings
-- [ ] `dotnet run Build.cs -- test -c Release` passes
-- [ ] `dotnet run Build.cs format check` passes (CSharpier + dotnet format)
+- [ ] `dotnet Build.cs -- build Release` passes with zero warnings
+- [ ] `dotnet Build.cs -- test -c Release` passes
+- [ ] `dotnet Build.cs -- format check` passes (CSharpier + dotnet format)
 - [ ] Affected docs, samples, or README were updated when public behavior changed
 - [ ] Manual validation was completed when the change touched a UI, CLI, or runtime workflow
 
@@ -938,26 +948,11 @@ body:
 
 ### 1.18 `Icon.png`
 
-Place a **128×128 PNG** at the repo root named `Icon.png`. This file is **required** — the library `.csproj` packs it into the NuGet package (`<None Include="../../Icon.png" Pack="true" PackagePath="\" />`). The CI build will fail with a missing-file error if it is absent.
+Use a user-provided **128×128 PNG** at the repo root named `Icon.png`. When present, validate its type and dimensions and pack it through the library project (`<None Include="../../Icon.png" Pack="true" PackagePath="\" />`).
 
-- For initial scaffold: commit a placeholder 128×128 PNG (even a solid color) and replace it before the first real NuGet publish.
-- Design guidance: square, looks good at 32×32 (used on nuget.org listings).
-
-**Agent note — generating a placeholder PNG**: AI agents cannot produce binary files directly. Use one of these approaches:
-
-1. **PowerShell + .NET** (no extra tools):
-   ```powershell
-   # Generate a minimal 128x128 solid-color PNG at repo root
-   Add-Type -AssemblyName System.Drawing
-   $bmp = [System.Drawing.Bitmap]::new(128, 128)
-   $g = [System.Drawing.Graphics]::FromImage($bmp)
-   $g.Clear([System.Drawing.Color]::FromArgb(92, 45, 145))  # .NET purple
-   $g.Dispose()
-   $bmp.Save("Icon.png", [System.Drawing.Imaging.ImageFormat]::Png)
-   $bmp.Dispose()
-   ```
-2. **ImageMagick** (if available): `magick -size 128x128 xc:#5C2D91 Icon.png`
-3. **Manual step**: Mark as `# TODO: Add Icon.png (128×128 placeholder)` and instruct the user to provide one.
+- Design it to remain legible at 32×32, as used on package listings.
+- If no icon was provided, omit `PackageIcon` and the packing item rather than generating an undisclosed placeholder or leaving a broken reference. Record the missing optional asset in the handoff and add it before the first public release.
+- Repository automation for asset validation must remain C#-based and cross-platform; do not introduce ad hoc PowerShell, Bash, ImageMagick, or unpinned global-tool requirements.
 
 ---
 
@@ -998,7 +993,7 @@ Benchmarks.
 
 ##### TestBench Benchmark Results
 
-###### Results will be populated here after running `dotnet run Build.cs comparison-bench` then `dotnet run Build.cs -- test -c Release`
+###### Results will be populated here after running `dotnet Build.cs -- comparison-bench` then `dotnet Build.cs -- test -c Release`
 
 ## Example Catalogue
 
@@ -1084,10 +1079,6 @@ This is the **master build configuration**. All projects inherit from it.
 
     <!-- Target framework: ONE value here, no multi-targeting unless explicitly needed -->
     <TargetFramework><DOTNET_VERSION></TargetFramework>
-    <!-- Defensive: suppresses build warning if the target framework becomes EOL in future.
-         Not needed on a fresh scaffold, but prevents CI breakage when an LTS version sunsets. -->
-    <CheckEolTargetFramework>false</CheckEolTargetFramework>
-
     <LangVersion><CSHARP_VERSION></LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
@@ -1097,14 +1088,12 @@ This is the **master build configuration**. All projects inherit from it.
     <!-- Artifact output layout: all bins go to artifacts/ at repo root -->
     <UseArtifactsOutput>true</UseArtifactsOutput>
     <ArtifactsPath>$(MSBuildThisFileDirectory)../artifacts</ArtifactsPath>
-    <VSTestResultsDirectory>$(ArtifactsPath)/TestResults</VSTestResultsDirectory>
-
     <PublishRelease>true</PublishRelease>
     <PackRelease>true</PackRelease>
 
-    <!-- Generate docs XML; suppress missing-doc warnings for tests -->
+    <!-- Public library APIs require XML documentation; scope CS1591 exceptions
+         to test or generated projects instead of suppressing them here. -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <!-- Analyzers: warnings are errors -->
     <AnalysisLevel>latest</AnalysisLevel>
@@ -1115,10 +1104,6 @@ This is the **master build configuration**. All projects inherit from it.
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <SuppressNETCoreSdkPreviewMessage>true</SuppressNETCoreSdkPreviewMessage>
 
-    <!-- TUnit + .NET 10 SDK compatibility: TUnit uses Microsoft.Testing.Platform (MTP)
-         which requires this property for `dotnet test` to work on .NET 10 SDK.
-         Without it, dotnet test fails with Microsoft.Testing.Platform.MSBuild.targets error. -->
-    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
   <!-- Non-CLS-compliant: required for P/Invoke and low-level types.
@@ -1183,19 +1168,19 @@ All NuGet package versions are managed centrally in this file. Individual `.cspr
 
   <ItemGroup>
     <!-- Build infrastructure (referenced from Directory.Build.props) -->
-    <PackageVersion Include="MinVer" Version="<LATEST_MINVER>" />
-    <PackageVersion Include="CSharpier.MsBuild" Version="<LATEST_CSHARPIER>" />
+    <PackageVersion Include="MinVer" Version="7.0.0" />
+    <PackageVersion Include="CSharpier.MsBuild" Version="1.3.0" />
 
     <!-- Testing -->
-    <PackageVersion Include="TUnit" Version="<LATEST_TUNIT>" />
-    <PackageVersion Include="PublicApiGenerator" Version="<LATEST_PUBLICAPIGEN>" />
+    <PackageVersion Include="TUnit" Version="1.65.0" />
+    <PackageVersion Include="PublicApiGenerator" Version="11.5.4" />
 
     <!-- Benchmarks -->
-    <PackageVersion Include="BenchmarkDotNet" Version="<LATEST_BDN>" />
-    <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="<LATEST_BDN>" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
 
     <!-- Add these if NEEDS_GENERATOR=true (see Phase 4b): -->
-    <!-- <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="<LATEST_ROSLYN>" /> -->
+    <!-- <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" /> -->
   </ItemGroup>
 
 </Project>
@@ -1203,7 +1188,7 @@ All NuGet package versions are managed centrally in this file. Individual `.cspr
 
 **Why CPM from day one**: Even the minimal scaffold has 6 distinct packages across 8+ projects. Without CPM, version drift is inevitable — one project on TUnit 1.5, another on 1.6 — and Dependabot updates become a multi-file chore. CPM centralizes all versions in one file, and Dependabot updates a single `Directory.Packages.props` instead of touching every `.csproj`.
 
-> **Resolving `<LATEST_ROSLYN>`**: Only needed if `NEEDS_GENERATOR=true`. Run `dotnet package search Microsoft.CodeAnalysis.CSharp --take 1` or visit [nuget.org/packages/Microsoft.CodeAnalysis.CSharp](https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp/).
+> **Pin discipline**: Versions above are the latest stable releases verified on **2026-08-14**. Re-check every exact package ID immediately before scaffolding with `dotnet package search <Name> --exact-match --format json`, reject prereleases unless explicitly requested, restore, and run dependency vulnerability/audit checks. `Microsoft.CodeAnalysis.CSharp` is needed only when `NEEDS_GENERATOR=true`. No unresolved version placeholder may remain.
 
 ---
 
@@ -1217,7 +1202,7 @@ All NuGet package versions are managed centrally in this file. Individual `.cspr
   <PropertyGroup>
     <RootNamespace><ROOTNS></RootNamespace>
     <IsPackable>true</IsPackable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>   <!-- Remove if NEEDS_UNSAFE=false and no unsafe code is anticipated -->
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
 
     <!-- AOT/Trimming: ENFORCE from day one.
          If NEEDS_AOT=false, remove these four lines and the description suffix below. -->
@@ -1231,7 +1216,7 @@ All NuGet package versions are managed centrally in this file. Individual `.cspr
     <!-- NuGet metadata -->
     <PackageId><LIBNAME></PackageId>
     <PackageTags>REPLACE;WITH;RELEVANT;TAGS;performance;dotnet</PackageTags>
-    <PackageIcon>Icon.png</PackageIcon>
+    <PackageIcon Condition="Exists('$(MSBuildProjectDirectory)/../../Icon.png')">Icon.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl><GITHUB_URL>/</PackageProjectUrl>
     <PackageReleaseNotes><GITHUB_URL>/releases</PackageReleaseNotes>
@@ -1255,7 +1240,7 @@ All NuGet package versions are managed centrally in this file. Individual `.cspr
 
   <!-- Pack icon and README into NuGet package -->
   <ItemGroup>
-    <None Include="../../Icon.png" Pack="true" PackagePath="\" />
+    <None Include="../../Icon.png" Pack="true" PackagePath="\" Condition="Exists('../../Icon.png')" />
     <None Include="../../README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
@@ -1309,7 +1294,7 @@ public static partial class <RootClass>
 
 **The `Empty()` method** is not a joke. It serves as:
 
-1. The initial baseline benchmark (0.0004 ns = JIT overhead floor)
+1. The initial infrastructure baseline benchmark, including the recorded runtime and machine environment
 2. The first test target (proves the test infrastructure works)
 3. A compilation check that the project builds at all
 
@@ -1394,8 +1379,8 @@ public sealed class <RootClass>Generator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // TODO: Register syntax/semantic providers and generation output.
-        // See: https://github.com/dotnet/roslyn/blob/main/docs/features/incremental-generators.md
+        // Substitute the selected generator's real syntax/semantic pipeline here.
+        // Do not emit this optional project until its generated behavior and tests are defined.
     }
 }
 ```
@@ -1424,7 +1409,7 @@ Add to the library `.csproj` (Phase 4.1) `<ItemGroup>` section:
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <RootNamespace><ROOTNS>.Test</RootNamespace>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
     <NoWarn>$(NoWarn);CA2007</NoWarn>
   </PropertyGroup>
@@ -1444,14 +1429,22 @@ Add to the library `.csproj` (Phase 4.1) `<ItemGroup>` section:
 </Project>
 ```
 
-> ⚠️ **Code coverage with TUnit**: The `TUnit` meta package **already includes `Microsoft.Testing.Extensions.CodeCoverage` transitively** — no additional coverage package is needed. Do NOT add `coverlet.collector` or `coverlet.msbuild` — these are VSTest data collectors and are [not compatible with TUnit's MTP runner](https://tunit.dev/docs/extending/code-coverage/). Coverage locally:
+> **Code coverage with TUnit**: Use the pinned `dotnet-coverage` local tool through the repository task runner:
 >
 > ```shell
-> # Collect coverage locally (cobertura XML for CI tools like Codecov):
-> dotnet test --coverage --coverage-output-format cobertura
+> # Collect deterministic Cobertura XML under artifacts/TestResults/:
+> dotnet Build.cs -- coverage
 > ```
 >
-> ⚠️ **CI caveat**: `dotnet test --coverage` is unreliable on CI for TUnit/MTP projects because the output path is indeterminate and hard to locate via glob. The CI workflow uses a dedicated `coverage` job with `dotnet-coverage collect` (see Phase 9.1) which writes to a known path. Do not attempt to replicate the `--coverage` approach in the CI `build-and-test` matrix job.
+> The CI workflow uses the same dedicated coverage command and uploads explicit files. Keep collection out of the build-and-test matrix so parallel jobs cannot race on one output path.
+
+Every TUnit project (`.Test`, `.DocTest`, generator tests, and future integration tests) must contain a `TestDefaults.cs` file:
+
+```csharp
+using TUnit.Core;
+
+[assembly: Timeout(30_000)]
+```
 >
 > **Viewing coverage results locally**:
 >
@@ -1462,22 +1455,23 @@ Add to the library `.csproj` (Phase 4.1) `<ItemGroup>` section:
 
 ### 5.1a `src/<LIBNAME>.Test/<RootClass>Test.cs`
 
-Every test project needs at least one test to prove the infrastructure works:
+The initial project may contain one explicitly labeled infrastructure smoke test until the selected library behavior is known:
 
 ```csharp
 namespace <ROOTNS>.Test;
 
-public class <RootClass>Test
+public sealed class <RootClass>InfrastructureSmokeTest
 {
     [Test]
-    public void Empty_DoesNotThrow()
+    [Property("Category", "InfrastructureSmoke")]
+    public void LibraryEntryPoint_LinksAndExecutes()
     {
         <RootClass>.Empty();
     }
 }
 ```
 
-**Why**: Mirrors the `Empty()` philosophy — this test proves the test runner, the project reference, and the library all link and execute. Delete it when real tests are added.
+**Why**: This is not behavioral coverage and must not be counted as such. It proves only that the runner, project reference, and entry point link and execute. Replace it with tests of observable public behavior as soon as the library contract is defined.
 
 ### 5.2 `src/<LIBNAME>.DocTest/<LIBNAME>.DocTest.csproj`
 
@@ -1487,7 +1481,7 @@ public class <RootClass>Test
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <RootNamespace><ROOTNS>.DocTest</RootNamespace>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
     <NoWarn>$(NoWarn);CA2007</NoWarn>
   </PropertyGroup>
@@ -1525,27 +1519,11 @@ public static class AssemblyInitializeCultureTest
 
 > **Parallelism note**: TUnit runs tests in parallel by default. To prevent README-writing tests from corrupting the file, apply `[NotInParallel]` to the `ReadMeTest` class (see Phase 6). TUnit's parallelism is controlled per-class/method via `[NotInParallel]` rather than at the assembly level.
 
-> ⚠️ **TUnit + .NET 10 SDK compatibility**: TUnit uses `Microsoft.Testing.Platform` (MTP), which conflicts with the legacy VSTest runner that `dotnet test` uses by default on .NET 10 SDK. This scaffold already sets `<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>` in `Directory.Build.props` (Phase 3), so `dotnet test` works out of the box. Without that property, `dotnet test` fails with a `Microsoft.Testing.Platform.MSBuild.targets(263)` error.
+> **TUnit + .NET 10**: This scaffold selects native MTP mode once in `global.json` with `"test": { "runner": "Microsoft.Testing.Platform" }`. Do not add the legacy `TestingPlatformDotnetTestSupport` compatibility property. Use `dotnet test --solution ...` or `dotnet test --project ...` and keep the entire solution on one test-runner mode.
 
 **Why**: Culture-invariant tests prevent locale-dependent failures (decimal separators, date formats).
 
-> **Package versions**: All package versions are represented as `<LATEST_*>` placeholder variables. Like the `<PINNED-SHA>` placeholders in Phase 9, these **must be resolved before scaffolding**. Run the helper command below or visit [nuget.org](https://www.nuget.org/) to get current stable versions:
->
-> ```shell
-> # Example: get latest stable MinVer version
-> dotnet package search MinVer --take 1
-> ```
->
-> | Placeholder             | Package                                                                                        | Verify at                                             |
-> | ----------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-> | `<LATEST_MINVER>`       | [MinVer](https://www.nuget.org/packages/MinVer/)                                               | `dotnet package search MinVer`                        |
-> | `<LATEST_CSHARPIER>`    | [CSharpier](https://www.nuget.org/packages/CSharpier/)                                         | `dotnet package search CSharpier`                     |
-> | `<LATEST_TUNIT>`        | [TUnit](https://www.nuget.org/packages/TUnit/)                                                 | `dotnet package search TUnit`                         |
-> | `<LATEST_PUBLICAPIGEN>` | [PublicApiGenerator](https://www.nuget.org/packages/PublicApiGenerator/)                       | `dotnet package search PublicApiGenerator`            |
-> | `<LATEST_BDN>`          | [BenchmarkDotNet](https://www.nuget.org/packages/BenchmarkDotNet/)                             | `dotnet package search BenchmarkDotNet`               |
-> | `<LATEST_ROSLYN>`       | [Microsoft.CodeAnalysis.CSharp](https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp/) | `dotnet package search Microsoft.CodeAnalysis.CSharp` |
->
-> If the table is empty at scaffold time, the agent **must not invent version numbers**. Instead, run `dotnet package search <PackageName> --take 1` to resolve each version, or leave the placeholder and add a `<!-- TODO: resolve package version -->` comment.
+> **Package verification**: Exact stable pins were verified on 2026-08-14. Re-run `dotnet package search <PackageName> --exact-match --format json` for every direct package before generating the repository. Do not emit prereleases, floating versions, invented package IDs, or unresolved placeholders.
 
 ---
 
@@ -1559,7 +1537,7 @@ Skip this phase if `NEEDS_GENERATOR=false`.
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <RootNamespace><ROOTNS>.Generators.Test</RootNamespace>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
     <NoWarn>$(NoWarn);CA2007</NoWarn>
   </PropertyGroup>
@@ -1891,7 +1869,7 @@ Each `ReadMeTest_<Name>()` method acts as both a **test** (proves the example co
     <OutputType>Exe</OutputType>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>pdbonly</DebugType>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
@@ -1907,7 +1885,7 @@ Each `ReadMeTest_<Name>()` method acts as both a **test** (proves the example co
 
 ### 7.2 `src/<LIBNAME>.Benchmarks/Program.cs`
 
-Entry point for `dotnet run Build.cs bench`. Without this file the `<OutputType>Exe</OutputType>` project will not compile.
+Entry point for `dotnet Build.cs -- bench`. Without this file the `<OutputType>Exe</OutputType>` project will not compile.
 
 ```csharp
 using BenchmarkDotNet.Running;
@@ -1935,7 +1913,7 @@ public class <RootClass>Bench
 }
 ```
 
-Replace with real benchmarks as the library API develops. The `Empty()` baseline confirms BDN infrastructure works (expect ~0.0004 ns).
+Replace this infrastructure smoke benchmark with representative public-API benchmarks as the library develops. Do not require an exact timing: BenchmarkDotNet reports depend on the runtime, JIT, hardware, power state, and environment.
 
 ### 7.3 `src/<LIBNAME>.ComparisonBenchmarks/<LIBNAME>.ComparisonBenchmarks.csproj`
 
@@ -1946,7 +1924,7 @@ Replace with real benchmarks as the library API develops. The `Empty()` baseline
     <OutputType>Exe</OutputType>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>pdbonly</DebugType>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
@@ -2007,7 +1985,7 @@ using BenchmarkDotNet.Exporters;
 using BenchmarkDotNet.Loggers;
 using BenchmarkDotNet.Running;
 
-// Usage (via task runner): dotnet run Build.cs comparison-bench
+// Usage (via task runner): dotnet Build.cs -- comparison-bench
 // Direct:                  dotnet run -c Release -- run
 if (args is not ["run"])
 {
@@ -2068,7 +2046,7 @@ static string RepoRoot([CallerFilePath] string path = "") =>
   <PropertyGroup>
     <RootNamespace><ROOTNS>.Tester</RootNamespace>
     <OutputType>Exe</OutputType>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
@@ -2095,7 +2073,7 @@ Console.WriteLine("OK");
 
 **Critical decisions**:
 
-- Pin ALL action references to **full SHA-256 commit hashes**, not floating tags. Get the hash by:
+- Pin ALL action references to **full 40-character commit SHAs**, not floating tags. Get the hash by:
   1. Visiting the action's GitHub page
   2. Looking at the "latest release" commit
   3. Using the full 40-character SHA
@@ -2119,7 +2097,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version to tag and create"
+        description: "Stable release version to tag and create (MAJOR.MINOR.PATCH)"
         required: false
 
 env:
@@ -2145,40 +2123,40 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
       - name: Build
-        run: dotnet run Build.cs build ${{ matrix.configuration }}
+        run: dotnet Build.cs -- build ${{ matrix.configuration }}
 
       - name: Test
-        run: dotnet run Build.cs -- test -c ${{ matrix.configuration }} --no-build --verbosity normal
+        run: dotnet Build.cs -- test -c ${{ matrix.configuration }} --no-build --verbosity normal
 
   coverage:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
       - name: Collect coverage
-        run: dotnet run Build.cs coverage
+        run: dotnet Build.cs -- coverage
 
       - name: Upload coverage to Codecov
         if: ${{ env.CODECOV_TOKEN != '' }}
@@ -2196,36 +2174,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup .NET
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
       - name: Verify formatting
-        run: dotnet run Build.cs format check
+        run: dotnet Build.cs -- format check
 
   pack:
     runs-on: windows-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # full history for MinVer
       - name: Create tag (to set version)
-        if: ${{ github.event.inputs.version != '' && github.actor == '<AUTHOR>' }}
-        run: git tag v${{ github.event.inputs.version }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.inputs.version != '' && github.actor == '<AUTHOR>' }}
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          stable_semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if [[ ! "$REQUESTED_VERSION" =~ $stable_semver ]]; then
+            echo "Version must be stable SemVer MAJOR.MINOR.PATCH without leading zeroes." >&2
+            exit 2
+          fi
+          git tag -- "v$REQUESTED_VERSION"
       - name: Setup .NET
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
       - name: Pack NuGet package
-        run: dotnet run Build.cs -- pack Release -o ${{ env.NuGetDirectory }}
+        run: dotnet Build.cs -- pack Release -o ${{ env.NuGetDirectory }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nuget
@@ -2237,59 +2224,85 @@ jobs:
     needs: [build-and-test, format, coverage, pack]
     runs-on: windows-latest
     permissions:
-      contents: write
-      id-token: write # for OIDC
-    if: ${{ github.event.inputs.version != '' && github.actor == '<AUTHOR>' }}
+      contents: read
+      id-token: write # allow GitHub to mint the OIDC token for NuGet/login
+    environment: release
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.inputs.version != '' && github.actor == '<AUTHOR>' }}
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download nuget packages
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: nuget
           path: ${{ env.NuGetDirectory }}
       - name: Setup .NET
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+
+      # Request the one-hour credential immediately before publication.
+      - name: NuGet login (OIDC to temporary API key)
+        id: nuget-login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Push packages
         shell: bash
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          NUGET_SYMBOL_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
-          dotnet nuget push "${{ env.NuGetDirectory }}"/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-          dotnet nuget push "${{ env.NuGetDirectory }}"/*.snupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push "${{ env.NuGetDirectory }}/*.nupkg" --source https://api.nuget.org/v3/index.json --skip-duplicate
 ```
 
-> **Why glob patterns instead of explicit filenames**: Using `*.nupkg` / `*.snupkg` avoids hardcoding `<LIBNAME>.${{ github.event.inputs.version }}` in the push command. On `windows-latest` runners, glob expansion in YAML `run:` steps is PowerShell by default — PowerShell does **not** expand `*.nupkg` globs the same way bash does. Always add `shell: bash` to steps that use globs on Windows runners; without it the push command passes a literal `*.nupkg` string to the NuGet CLI and fails with "file not found".
+> **Why the quoted glob**: `dotnet nuget push` expands the quoted `*.nupkg` pattern itself, avoiding shell-dependent wildcard behavior and hardcoded filenames. Its normal package push also sends the matching `.snupkg` unless `--no-symbols` is supplied, so do not issue a second, duplicate symbol push.
 
-> **Why direct `NUGET_API_KEY` instead of OIDC `NuGet/login`**: The OIDC-based `NuGet/login` action adds complexity (a separate step, OIDC token exchange, an additional action to SHA-pin) and is unnecessary for straightforward pushes. A repository secret named `NUGET_API_KEY` is simpler, more widely documented, and behaves identically across GitHub-hosted and self-hosted runners.
+### 9.1a NuGet.org Trusted Publishing
 
-> **Why `dotnet-coverage collect` instead of `dotnet test --coverage`**: TUnit uses `Microsoft.Testing.Platform` (MTP) as its test runner. While `dotnet test` works for running tests (when `<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>` is set), passing `--coverage` through `dotnet test` to the MTP runner is unreliable on CI — the coverage output ends up in an indeterminate path inside `artifacts/TestResults/` that the Codecov action cannot reliably locate. The `dotnet-coverage collect` CLI tool wraps the test process directly, outputs Cobertura XML to a known path (`TestResults/`), and the Codecov upload references those files explicitly. This is the recommended pattern for TUnit + MTP projects.
+Trusted Publishing is the default for GitHub Actions. It exchanges GitHub's signed OIDC token for a short-lived NuGet API key, so the repository stores no long-lived publishing credential.
+
+Before enabling the workflow, sign in to nuget.org and create a Trusted Publishing policy for the actual package owner:
+
+- Repository owner: the exact GitHub owner from `<GITHUB_URL>`.
+- Repository: the exact GitHub repository name.
+- Workflow file: `dotnet.yml` — the basename only, not `.github/workflows/dotnet.yml`.
+- Environment: `release`, matching the protected GitHub environment on the publish job.
+
+Store the nuget.org **profile username, not the email address**, as the `NUGET_USER` environment secret. Configure required reviewers or other deployment protection rules on the `release` environment. Only the publish job receives `id-token: write`; build, test, coverage, format, and pack jobs remain read-only.
+
+`NuGet/login` produces a temporary API key valid for one hour, and an OIDC token can be exchanged only once. Keep the login step immediately before the push, do not persist or print its output, and run a controlled first publication to activate and verify the policy. The policy's owner, repository, workflow filename, and environment must match the token exactly. The pinned .NET SDK includes NuGet 7.6-or-later support for reading `NUGET_API_KEY` and `NUGET_SYMBOL_API_KEY` from the environment, keeping the credential out of process arguments.
+
+If Trusted Publishing is not yet available for the account or target registry, use a long-lived key only as a documented fallback: scope it to push only `<LIBNAME>` or `<LIBNAME>.*`, set the shortest practical expiration, store it solely as `secrets.NUGET_API_KEY`, rotate it, and remove it when OIDC becomes available. Do not configure the OIDC and API-key paths simultaneously, and never place a credential in YAML, arguments captured in logs, command history, or committed files.
+
+> **Why `dotnet-coverage collect` instead of `dotnet test --coverage`**: TUnit uses Microsoft.Testing.Platform (MTP). The pinned `dotnet-coverage` local tool wraps the test executable directly and writes Cobertura XML to a deterministic path that CI can upload. Native MTP mode is selected in `global.json`; no compatibility property is needed.
 
 **How to get pinned SHAs**: Go to each action's GitHub release page and copy the commit SHA for the version you want. Pin to an exact 40-char SHA — not a tag. Update SHAs periodically (Dependabot will do this automatically if configured).
 
-**Agent note — resolving `<PINNED-SHA>` placeholders**: AI agents cannot browse GitHub at scaffold time. Before scaffolding, the user (or a setup script) must populate the SHA lookup table below. Run the helper command for each action to get the current commit hash:
+**Immutable action pins**: Re-verify releases and commit objects at scaffold time rather than choosing the lexically last tag:
 
 ```shell
-# Resolve SHA for a specific tag (e.g. actions/checkout v6):
-git ls-remote --tags https://github.com/actions/checkout | grep "refs/tags/v6$"
-# Use the SHA from the tag ref directly — do NOT use ^{} dereference entries.
-# Or visit: https://github.com/actions/checkout/releases → copy commit SHA
+# Verify a deliberately selected release tag and its peeled commit, if annotated:
+git ls-remote --tags https://github.com/actions/checkout "refs/tags/v7.0.1" "refs/tags/v7.0.1^{}"
+# Confirm the release and commit at https://github.com/actions/checkout/releases
 ```
 
 | Placeholder in workflow       | Action                        | Pinned version | SHA                                        | Last verified |
 | ----------------------------- | ----------------------------- | -------------- | ------------------------------------------ | ------------- |
-| `step-security/harden-runner` | `step-security/harden-runner` | v2.19.4        | `9af89fc71515a100421586dfdb3dc9c984fbf411` | 2026-06-10    |
-| `actions/checkout`            | `actions/checkout`            | v6.0.3         | `df4cb1c069e1874edd31b4311f1884172cec0e10` | 2026-06-10    |
-| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v5.3.0         | `9a946fdbd5fb07b82b2f5a4466058b876ab72bb2` | 2026-06-10    |
-| `codecov/codecov-action`      | `codecov/codecov-action`      | v7.0.0         | `fb8b3582c8e4def4969c97caa2f19720cb33a72f` | 2026-06-10    |
-| `actions/upload-artifact`     | `actions/upload-artifact`     | v7.0.1         | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | 2026-06-10    |
-| `actions/download-artifact`   | `actions/download-artifact`   | v8.0.1         | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-06-10    |
+| `step-security/harden-runner` | `step-security/harden-runner` | v2.20.1        | `b09bb98e06d4d774595224525879c09bc6e98c40` | 2026-08-14    |
+| `actions/checkout`            | `actions/checkout`            | v7.0.1         | `3d3c42e5aac5ba805825da76410c181273ba90b1` | 2026-08-14    |
+| `actions/setup-dotnet`        | `actions/setup-dotnet`        | v6.0.0         | `a98b56852c35b8e3190ac28c8c2271da59106c68` | 2026-08-14    |
+| `codecov/codecov-action`      | `codecov/codecov-action`      | v7.0.0         | `fb8b3582c8e4def4969c97caa2f19720cb33a72f` | 2026-08-14    |
+| `actions/upload-artifact`     | `actions/upload-artifact`     | v7.0.1         | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | 2026-08-14    |
+| `actions/download-artifact`   | `actions/download-artifact`   | v8.0.1         | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-08-14    |
+| `NuGet/login`                 | `NuGet/login`                 | v1.2.0         | `8d196754b4036150537f80ac539e15c2f1028841` | 2026-08-14    |
 
-If the table above is empty at scaffold time, the agent **must** use version tags as a temporary fallback (e.g., `actions/checkout@v6`) and add a `TODO:` comment on each line: `# TODO: Pin to full SHA before merging to main`. The Phase 13 validation checklist will catch these.
+Pin the peeled commit for annotated tags and the tag target for lightweight tags; never pin a tag-object SHA. If an exact 40-character commit SHA cannot be verified, stop scaffolding the workflow. Floating tags and TODO fallbacks are not acceptable generated output.
 
 ---
 
@@ -2318,16 +2331,16 @@ updates:
 
 ## Phase 10: `Build.cs` — Task Runner at Repo Root
 
-A single **.NET 10 file-based app** at the repo root replaces any collection of shell scripts. File-based apps require no `.csproj` — they are compiled and run via `dotnet run Build.cs`, and work on Windows, Linux, and macOS with any .NET 10 SDK installation.
+A single **.NET 10 file-based app** at the repo root replaces any collection of shell scripts. File-based apps require no `.csproj`; invoke it with the .NET 10 shorthand `dotnet Build.cs -- help`. It works on Windows, Linux, and macOS with the pinned .NET 10 SDK.
 
-> **Hard requirement**: `Build.cs` file-based apps require the **.NET 10 SDK** (the feature was introduced in .NET 10). If your repository must be buildable with an older SDK (e.g., because it multi-targets `net8.0` only and your CI does not install the .NET 10 SDK), this approach is **not usable** — fall back to PowerShell Core (`.ps1`) or a `Makefile`.
+> **Hard requirement**: `Build.cs` file-based apps require the **.NET 10 SDK**. If the repository must build with an older SDK only, use a conventional C# tool project such as `tools/Build/Build.csproj` and keep the same command contract.
 
 ### Why prefer a C# file-based app over shell scripts?
 
 | Concern         | Shell scripts (multiple files)       | `Build.cs` (1 file)                       |
 | --------------- | ------------------------------------ | ----------------------------------------- |
 | Cross-platform  | Requires `pwsh` or `bash` separately | Works anywhere with the .NET 10 SDK       |
-| Discoverability | Scattered across the repo, no help   | `dotnet run Build.cs help` lists all commands |
+| Discoverability | Scattered across the repo, no help   | `dotnet Build.cs -- help` lists all commands |
 | IDE support     | Limited                              | Full IntelliSense, compile-time checks    |
 | Type safety     | Silent string-concat bugs            | Compiler catches errors                   |
 | AOT publish     | N/A                                  | `dotnet publish Build.cs` → native binary |
@@ -2342,36 +2355,29 @@ To produce a true standalone binary (e.g., for CI runners): remove `#:property P
 
 ```
 # From repo root (standard usage — works on Windows, Linux, macOS):
-dotnet run Build.cs bench
-dotnet run Build.cs pack
-dotnet run Build.cs rename CudaSharp MyNewLib
+dotnet Build.cs -- bench
+dotnet Build.cs -- pack
+dotnet Build.cs -- rename CudaSharp MyNewLib
 
 # Unix — make executable once, then invoke directly:
 chmod +x Build.cs
 ./Build.cs bench
 ```
 
-> **Explicit form** (when the `.NET 10` file-based shorthand is unavailable or arg passing needs disambiguation):
->
-> ```
-> dotnet run Build.cs -- bench
-> dotnet run Build.cs -- rename CudaSharp MyNewLib
-> ```
-
-> **Critical pitfall**: If any forwarded command arguments begin with `-` or `--` (for example `-c`, `--no-build`, `-o`, or `--verbosity`), keep the `--` separator after `Build.cs`. `dotnet run Build.cs test -c Release` is wrong because the outer `dotnet run` consumes `-c`.
+> **Invocation rule**: The .NET 10 shorthand already identifies the file app, so `--file` is not required. Keep the single `--` boundary so option-style task arguments such as `-c` and `--yes` are forwarded to `Build.cs`.
 
 ### Folder layout note
 
 Place `Build.cs` at the **repo root**, one level above all `.csproj` files. Per .NET SDK guidance on [avoiding project file cones](https://learn.microsoft.com/en-us/dotnet/core/sdk/file-based-apps#avoid-project-file-cones), do **not** nest `Build.cs` inside a directory that contains a `.csproj`. The repo root has no `.csproj` at that level, so this layout is safe.
 
-**Important**: use **LF line endings** in `Build.cs`. The `#!/usr/bin/env dotnet` shebang requires LF to work on Unix. The `*.cs text eol=lf` rule in `.gitattributes` handles this automatically.
+**Important**: use **LF line endings** in `Build.cs`. The `#!/usr/bin/env -S dotnet --` shebang requires LF to work on Unix and preserves application arguments such as `--help`. The `*.cs text eol=lf` rule in `.gitattributes` handles this automatically. If a target Unix lacks `env -S`, invoke the file explicitly with `dotnet Build.cs -- ...`.
 
 ### `Build.cs` — Complete file
 
 ```csharp
-#!/usr/bin/env dotnet
+#!/usr/bin/env -S dotnet --
 // Task runner for the repository.
-// Usage: dotnet run Build.cs <command> [args]
+// Usage: dotnet Build.cs -- <command> [args]
 // Requires: .NET 10 SDK (file-based apps are a .NET 10 feature).
 // Invoke from any directory — [CallerFilePath] locates the repo root at compile time.
 
@@ -2397,7 +2403,7 @@ switch (command)
         return 0;
 
     case "test":
-        Run("dotnet", ["test", "--solution", solutionPath, .. commandArgs], repoRoot);
+        Run("dotnet", ["test", "--solution", solutionPath, "--no-launch-profile-arguments", .. commandArgs], repoRoot);
         return 0;
 
     case "coverage":
@@ -2467,37 +2473,47 @@ switch (command)
         Format(commandArgs);
         return 0;
 
-    case "prettier":
-        Run("npx",
-            [
-                "prettier",
-                "--write",
-                "**/*.{yml,yaml,json,md}",
-                "--ignore-path",
-                ".gitignore",
-            ],
-            repoRoot);
-        return 0;
-
     case "clean":
+        if (!commandArgs.Contains("--yes", StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"Dry run: would delete '{Path.Combine(repoRoot, "artifacts")}' and '{Path.Combine(repoRoot, "publish")}', then run dotnet clean.");
+            Console.WriteLine("Re-run with: clean --yes");
+            return 0;
+        }
+
         DeleteIfPresent(Path.Combine(repoRoot, "artifacts"));
         DeleteIfPresent(Path.Combine(repoRoot, "publish"));
         Run("dotnet", ["clean", solutionPath], repoRoot);
         return 0;
 
     case "rename":
-        if (commandArgs.Length < 2)
+        var renameArgs = commandArgs.Where(arg => !string.Equals(arg, "--yes", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (renameArgs.Length != 2 || !IsSafeTemplateName(renameArgs[0]) || !IsSafeTemplateName(renameArgs[1]))
         {
-            Console.Error.WriteLine("Usage: dotnet run Build.cs rename <OldName> <NewName>");
+            Console.Error.WriteLine("Usage: dotnet Build.cs -- rename <OldName> <NewName> [--yes]");
             return 1;
         }
 
-        RenameAll(repoRoot, commandArgs[0], commandArgs[1]);
+        if (!commandArgs.Contains("--yes", StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"Dry run: would rename '{renameArgs[0]}' to '{renameArgs[1]}' throughout '{repoRoot}'.");
+            Console.WriteLine("Validate in a clean temporary worktree, then re-run with --yes.");
+            return 0;
+        }
+
+        RenameAll(repoRoot, renameArgs[0], renameArgs[1]);
+        return 0;
+
+    case "help":
+    case "-h":
+    case "--help":
+        Help();
         return 0;
 
     default:
+        Console.Error.WriteLine($"Unknown command: '{command}'.");
         Help();
-        return 0;
+        return 2;
 }
 
 void Pack(string[] arguments)
@@ -2584,8 +2600,7 @@ void Format(string[] arguments)
 void Help()
 {
     Console.WriteLine(
-        @"Usage: dotnet run Build.cs <command> [args]
-       dotnet run Build.cs -- <command> [args]   (use -- when forwarding option-style args)
+        @"Usage: dotnet Build.cs -- <command> [args]
 
 Commands:
     build [config]                         Build the solution (default: Debug)
@@ -2597,9 +2612,8 @@ Commands:
     pack [config] [args]                   Pack NuGet artifacts (default output: artifacts/nuget)
     publish-tester [rid] [config] [args]   Publish the tester app
     format [check]                         Run CSharpier plus dotnet format style/analyzers
-    prettier                               Format YAML/Markdown/JSON via Prettier (requires Node)
-    clean                                  Delete artifacts and publish output, then clean the solution
-    rename <OldName> <NewName>             Rename template throughout repository
+    clean [--yes]                          Preview cleanup; --yes deletes generated output
+    rename <OldName> <NewName> [--yes]     Preview rename; --yes applies it after validation
     help                                   Show this command list"
     );
 }
@@ -2612,6 +2626,13 @@ static void DeleteIfPresent(string path)
     Directory.Delete(path, recursive: true);
     Console.WriteLine($"Deleted {path}");
 }
+
+static bool IsSafeTemplateName(string value) =>
+    !string.IsNullOrWhiteSpace(value)
+    && value is not "." and not ".."
+    && value.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
+    && !value.Contains(Path.DirectorySeparatorChar)
+    && !value.Contains(Path.AltDirectorySeparatorChar);
 
 static IEnumerable<string> ProjectFiles(string repoRoot) =>
     Directory
@@ -2642,9 +2663,12 @@ static void CollectCoverage(string repoRoot, string projectPath, string coverage
 
     Run("dotnet",
         [
+            "tool",
+            "run",
             "dotnet-coverage",
+            "--",
             "collect",
-            $"dotnet run --project {QuoteCommandValue(projectRelativePath)} -c Release --no-build --no-restore -- --no-ansi",
+            $"dotnet run --project {QuoteCommandValue(projectRelativePath)} -c Release --no-build --no-restore --no-launch-profile -- --no-ansi",
             "--output",
             outputPath,
             "--output-format",
@@ -2759,7 +2783,7 @@ benchmarks/
   .gitkeep
 ```
 
-The CI and `dotnet run Build.cs comparison-bench` will populate `benchmarks/<MachineName>/TestBench.md` and `benchmarks/<MachineName>/Versions.txt` automatically. The author typically pre-commits results from their own machine so the README shows real data from day one.
+The CI and `dotnet Build.cs -- comparison-bench` will populate `benchmarks/<MachineName>/TestBench.md` and `benchmarks/<MachineName>/Versions.txt` automatically. The author typically pre-commits results from their own machine so the README shows real data from day one.
 
 ---
 
@@ -2769,14 +2793,14 @@ This phase must be completed before Phase 13's validation checklist — the chec
 
 ```shell
 # 1. Build all projects first (required — comparison-bench runs in Release config)
-dotnet run Build.cs build Release
+dotnet Build.cs -- build Release
 
 # 2. Run comparison benchmarks — writes to benchmarks/<MachineName>/TestBench.md
-dotnet run Build.cs comparison-bench
+dotnet Build.cs -- comparison-bench
 
 # 3. Run full test suite — ReadMeTest_UpdateBenchmarksInMarkdown embeds the
 #    benchmark tables and ReadMeTest_PublicApi embeds the public API into README.md
-dotnet run Build.cs -- test -c Release
+dotnet Build.cs -- test -c Release
 ```
 
 After all three commands succeed:
@@ -2786,19 +2810,20 @@ git add benchmarks/ README.md
 git commit -m "chore: seed benchmark results and README tables"
 ```
 
-**Why**: `ReadMeTest_UpdateBenchmarksInMarkdown` reads from `benchmarks/<MachineName>/` which doesn't exist until `comparison-bench` runs. Without this phase, that test crashes with an empty directory guard bypass but the README benchmark section remains empty — and the Phase 13 `0.0004 ns` validation step can never pass. Running benchmarks here also proves BDN, the comparison project, and the `RepoRoot()` path calculation all work correctly end-to-end.
+**Why**: `ReadMeTest_UpdateBenchmarksInMarkdown` reads from `benchmarks/<MachineName>/`, which does not exist until `comparison-bench` runs. Running benchmarks here proves the BenchmarkDotNet infrastructure, comparison project, and `RepoRoot()` calculation work end to end; validation checks for a recorded result and environment, never a machine-specific timing.
 
 ---
 
 ## Phase 12: Required GitHub Repository Settings
 
-After pushing the initial commit, configure these in the repository settings:
+After an authorized push, configure these settings only when the user also authorized external repository changes; otherwise provide them as explicit handoff items:
 
-1. **Branch protection on `main`**: Require CI to pass before merge
-2. **Codecov secret**: Add `CODECOV_TOKEN` to repository secrets (get from codecov.io)
-3. **NuGet secret**: Add `NUGET_API_KEY` to repository secrets (get from nuget.org → Account → API Keys)
-4. **Dependabot**: Enable for GitHub Actions (will keep action SHAs updated automatically)
-5. **CodeQL**: _Optional._ Add `.github/workflows/codeql.yml` using GitHub’s standard CodeQL starter workflow template if security scanning is desired. See the Decision Table for guidance.
+1. **Branch protection on `main`**: Require CI to pass before merge.
+2. **Release environment**: Create a protected `release` environment and require the appropriate reviewers.
+3. **NuGet Trusted Publishing**: Create the nuget.org policy for this repository, `dotnet.yml`, and the `release` environment; store the nuget.org profile name as the `NUGET_USER` environment secret. Do not add a long-lived `NUGET_API_KEY` unless the documented fallback is required.
+4. **Codecov secret**: Add `CODECOV_TOKEN` to repository secrets when Codecov is enabled.
+5. **Dependabot**: Enable GitHub Actions and NuGet updates so immutable action and package pins stay current through reviewed PRs.
+6. **CodeQL**: _Optional._ Add `.github/workflows/codeql.yml` using GitHub's standard CodeQL starter workflow template if security scanning is desired. See the Decision Table for guidance.
 
 ---
 
@@ -2806,31 +2831,32 @@ After pushing the initial commit, configure these in the repository settings:
 
 Before declaring the scaffold complete, verify:
 
-- [ ] `dotnet run Build.cs format` succeeds and leaves no pending formatting changes before the first push
-- [ ] `dotnet run Build.cs build Debug` passes with zero warnings
-- [ ] `dotnet run Build.cs build Release` passes with zero warnings (CSharpier.MsBuild checks formatting automatically)
-- [ ] `dotnet run Build.cs -- test -c Debug` passes
-- [ ] `dotnet run Build.cs -- test -c Release` passes
-- [ ] `dotnet run Build.cs coverage` writes Cobertura XML to `artifacts/TestResults/`
-- [ ] `dotnet run Build.cs format check` passes (runs CSharpier + dotnet format style + analyzers)
-- [ ] `dotnet run Build.cs pack` produces a `.nupkg` and `.snupkg`
-- [ ] README, CONTRIBUTING, AGENTS, and workflow commands that forward option-style args to `Build.cs` use the `dotnet run Build.cs -- ...` form
+- [ ] `dotnet Build.cs -- format` succeeds and leaves no pending formatting changes before the first push
+- [ ] `dotnet Build.cs -- build Debug` passes with zero warnings
+- [ ] `dotnet Build.cs -- build Release` passes with zero warnings (CSharpier.MsBuild checks formatting automatically)
+- [ ] `dotnet Build.cs -- test -c Debug` passes
+- [ ] `dotnet Build.cs -- test -c Release` passes
+- [ ] `dotnet Build.cs -- coverage` writes Cobertura XML to `artifacts/TestResults/`
+- [ ] `dotnet Build.cs -- format check` passes (runs CSharpier + dotnet format style + analyzers)
+- [ ] `dotnet Build.cs -- pack` produces a `.nupkg` and `.snupkg`
+- [ ] README, CONTRIBUTING, AGENTS, and workflow commands that forward option-style args to `Build.cs` use the `dotnet Build.cs -- ...` form
 - [ ] README contains the `Empty()` method body under `## Example`
 - [ ] `docs/PublicApi.md` exists and contains the public API snippet under `## Public API Reference` (auto-updated by `dotnet test`)
-- [ ] The benchmark result row in README shows `0.0004 ns` or similar (confirms BDN baseline was run)
+- [ ] The README contains a benchmark result row plus runtime and machine metadata (no fixed timing threshold for the infrastructure smoke benchmark)
 - [ ] Pre-commit hooks are installed and `gitleaks` does not fire _(skip if Python/pre-commit unavailable — see Phase 1.8 prerequisite)_
-- [ ] All action SHAs in `.github/workflows/dotnet.yml` are 40-char hashes, not version tags (or have `# TODO: Pin to full SHA` comments if lookup table was empty)
+- [ ] All action references in `.github/workflows/dotnet.yml` are verified 40-character commit SHAs; no floating tag or TODO fallback remains
 - [ ] `SECURITY.md` exists at repo root
 - [ ] `CONTRIBUTING.md` exists at repo root
 - [ ] `CHANGELOG.md` exists at repo root
 - [ ] `.config/dotnet-tools.json` exists at repo root
 - [ ] `.github/ISSUE_TEMPLATE/bug_report.md` and `feature_request.md` exist
 - [ ] `.github/PULL_REQUEST_TEMPLATE.md` exists
-- [ ] All `<LATEST_*>` package version placeholders have been resolved to real versions
-- [ ] `dotnet run Build.cs help` prints the command list without errors (smoke test the task runner)
-- [ ] `dotnet run Build.cs rename <LIBNAME> TestRename` runs without errors; revert with `dotnet run Build.cs rename TestRename <LIBNAME>`
+- [ ] Every direct package/tool has an exact stable version; restore and dependency audit pass
+- [ ] The nuget.org Trusted Publishing policy exactly matches the repository owner/name, `dotnet.yml`, and protected `release` environment; no long-lived API key is configured on the default path
+- [ ] `dotnet Build.cs -- help` prints the command list without errors (smoke test the task runner)
+- [ ] `dotnet Build.cs -- rename <LIBNAME> TestRename` reports a dry-run plan; apply and revert only in a clean temporary worktree with `--yes`
 - [ ] _(If `NEEDS_GENERATOR=true`)_ Generator project builds with `dotnet build src/<LIBNAME>.Generators/<LIBNAME>.Generators.csproj`
-- [ ] _(If `NEEDS_GENERATOR=true`)_ Generator tests pass: `dotnet test src/<LIBNAME>.Generators.Test/<LIBNAME>.Generators.Test.csproj`
+- [ ] _(If `NEEDS_GENERATOR=true`)_ Generator tests pass: `dotnet test --project src/<LIBNAME>.Generators.Test/<LIBNAME>.Generators.Test.csproj --no-launch-profile-arguments`
 - [ ] _(If `NEEDS_GENERATOR=true`)_ Library `.csproj` has `<ProjectReference ... OutputItemType="Analyzer" ReferenceOutputAssembly="false" />` wiring the generator
 - [ ] _(If `NEEDS_GENERATOR=true`)_ `AnalyzerReleases.Shipped.md` and `AnalyzerReleases.Unshipped.md` exist in the generator project
 
@@ -2903,7 +2929,7 @@ After all phases are complete, the repository contains exactly these files (subs
 ├── codecov.yml
 ├── CONTRIBUTING.md
 ├── global.json
-├── Icon.png
+├── Icon.png                                      ← optional, user-provided and validated
 ├── LICENSE
 ├── nuget.config
 ├── README.md
@@ -2919,7 +2945,7 @@ After all phases are complete, the repository contains exactly these files (subs
 
 | Scenario                                               | Change                                                                                                                                                                                                                                                                                                     |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Library wraps a native `.dll`/`.so`                    | Add `NativeLibrary.Load` override in static constructor; add platform-specific `<NativeLibraryPath>` to csproj                                                                                                                                                                                             |
+| Library wraps a native `.dll`/`.so`                    | Add a guarded `NativeLibrary.Load` call or resolver in initialization; add platform-specific native asset/runtime configuration to the project                                                                                                                                                               |
 | Multi-targeting (`net8.0;net10.0`)                     | Change `<TargetFramework>` to `<TargetFrameworks>` in Library csproj; guard README write tests with `#if NET10_0`                                                                                                                                                                                          |
 | Library has no comparison alternative                  | Keep `ComparisonBenchmarks` but only add the one baseline benchmark; remove when irrelevant                                                                                                                                                                                                                |
 | Not publishing to NuGet                                | Remove `create-release-push` job; keep `pack` for local testing                                                                                                                                                                                                                                            |

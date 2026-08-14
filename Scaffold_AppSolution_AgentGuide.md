@@ -1,4 +1,4 @@
-# Agent Guide: Creating a "nietras-quality" Large .NET Application Solution
+# Agent Guide: Scaffolding a Production-Grade Large .NET Application Solution
 
 > **Purpose**: Step-by-step instructions for an AI agent to scaffold a large .NET application solution (console app, desktop tool, local service, agent orchestration host) with many internal library projects and an executable entry point.
 > **Inputs required from user before starting**: application name, domain layers, target platforms, whether native interop is needed.
@@ -44,7 +44,7 @@ Ask the user for (or infer from context):
 | `AUTHOR`           | `yourname`                                                    | GitHub username                                                                           |
 | `DOTNET_VERSION`   | `net10.0`                                                     | Target framework for all projects                                                         |
 | `CSHARP_VERSION`   | `14.0`                                                        | Match to chosen .NET version                                                              |
-| `SDK_VERSION`      | `10.0.103`                                                    | Exact SDK version from `dotnet --version`                                                 |
+| `SDK_VERSION`      | `10.0.400`                                                    | Current stable .NET 10 SDK feature band (verified 2026-08-14); re-check before scaffolding |
 | `GITHUB_URL`       | `https://github.com/you/APPNAME`                              | Full repo URL                                                                             |
 | `LICENSE`          | `MIT`                                                         | License type                                                                              |
 | `YEAR`             | `2026`                                                        | Copyright year                                                                            |
@@ -81,7 +81,7 @@ The user may add, remove, or rename layers. Record the final list as `DOMAIN_LAY
 
 ## Phase 0b: Initialize Git Repository
 
-Before creating any files, initialize the repository:
+Initialize Git only when the user explicitly requested repository initialization. First resolve the exact target directory and inspect for an existing repository or user files; never run these commands in a populated directory implicitly. Otherwise skip Git mutations and present the commands as optional handoff steps:
 
 ```shell
 mkdir <APPNAME> && cd <APPNAME>
@@ -95,24 +95,12 @@ git config user.name   # must print the real name, not a placeholder
 git config user.email  # must print the real email / GitHub-linked address
 ```
 
-If the output is wrong (for example it shows a machine hostname, `bia10@github.com`, or is empty), fix it before committing:
-
-```shell
-# Fix locally (this repo only):
-git config user.name  "Your Name"
-git config user.email "you@example.com"
-
-# Or remove a local override and fall back to global:
-git config --unset user.name
-git config --unset user.email
-```
-
-> **Agent note**: Do not set or override `user.name`/`user.email` yourself. Flag any mismatch to the user.
+If the output is wrong or empty, stop before committing and ask the user to correct it. Agents must not set, unset, or override `user.name` or `user.email`.
 
 **Run CSharpier before the first commit.** After all source files are created but before any `git add`, install local tools and format:
 
 ```shell
-dotnet tool restore          # installs CSharpier from .config/dotnet-tools.json
+dotnet tool restore          # installs pinned CSharpier and dotnet-coverage local tools
 dotnet csharpier format .    # format all .cs files in place
 dotnet format style          # fix naming / using-directive style
 dotnet format analyzers      # fix Roslyn analyzer violations
@@ -122,7 +110,7 @@ Skipping this step is the single most common cause of post-scaffold "fix formatt
 
 ### Branch and PR workflow
 
-Create a scoped branch before adding source changes:
+If branch creation was explicitly authorized, create a scoped branch before adding source changes:
 
 ```shell
 git checkout -b feature/<scope>-<summary>
@@ -133,9 +121,9 @@ git checkout -b feature/<scope>-<summary>
 
 Use lowercase prefixes. When the work is tied to a GitHub issue, include the issue number in the branch name, for example `feature/issue-123-add-local-orchestration-host`.
 
-After the first green push, open a **draft** pull request, link the related issue in the PR body when one exists (`Fixes #123`), and keep review, verification, and remediation commits on that same branch until the PR is ready for human merge review.
+When the user also authorized pushing and opening a PR, open a **draft** after the first green push, link the related issue when one exists (`Fixes #123`), and keep review/remediation commits on the same head branch. Scaffolding authorization alone does not authorize a push or PR.
 
-### Recommended commit strategy
+### Recommended commit strategy (only when commits are authorized)
 
 ```shell
 # Commit 1: Root config files (Phase 1)
@@ -168,9 +156,14 @@ Create the shared repository-root files below first. This guide is standalone, s
     "version": "<SDK_VERSION>",
     "rollForward": "latestPatch",
     "allowPrerelease": false
+  },
+  "test": {
+    "runner": "Microsoft.Testing.Platform"
   }
 }
 ```
+
+**Why**: Pins a stable SDK feature band and selects the runner required by TUnit for every test project. `latestPatch` accepts newer servicing patches only within the selected feature band; it does not silently move `10.0.1xx` to `10.0.4xx`. Update `SDK_VERSION` deliberately after validation.
 
 ### 1.2 `nuget.config`
 
@@ -307,11 +300,11 @@ dotnet_diagnostic.MA0051.severity = none
 ```yaml
 repos:
   - repo: https://github.com/gitleaks/gitleaks
-    rev: <LATEST_GITLEAKS_TAG>
+    rev: 6eaad039603a4de39fddd1cf5f727391efe9974e # v8.30.0; v8.30.1 has a detection regression
     hooks:
       - id: gitleaks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: <LATEST_PRECOMMIT_HOOKS_TAG>
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -324,7 +317,7 @@ repos:
         types: [c#]
 ```
 
-Install `pre-commit` via `pip install pre-commit` or `pipx install pre-commit`. If Python is not available, skip this file and rely on CI plus the format checks.
+Install `pre-commit` via `pip install pre-commit` or `pipx install pre-commit`. If Python is not available, rely on equivalent CI checks. The Gitleaks pin deliberately stays at v8.30.0 because v8.30.1 has a confirmed regression that can miss known secrets; re-evaluate this documented security exception when a fixed release ships.
 
 ### 1.9 `codecov.yml` _(Optional)_
 
@@ -368,13 +361,13 @@ Thank you for considering contributing.
 ## How to Contribute
 
 1. Create a scoped branch from `main`, for example `feature/<scope>-<summary>` or `fix/<scope>-<summary>`.
-2. Run `dotnet run Build.cs format` to restore local tools (CSharpier + dotnet-coverage) and normalize formatting.
+2. Run `dotnet Build.cs -- format` to restore local tools (CSharpier + dotnet-coverage) and normalize formatting.
 3. Ensure the repository passes:
 
    ```shell
-   dotnet run Build.cs build Release
-   dotnet run Build.cs -- test -c Release
-   dotnet run Build.cs format check
+   dotnet Build.cs -- build Release
+   dotnet Build.cs -- test -c Release
+   dotnet Build.cs -- format check
    ```
 
 5. Push the branch and open a draft pull request against `main`.
@@ -411,6 +404,8 @@ Before changing code, agents MUST identify the behavior or technical outcome bei
 
 Agents MUST minimize blast radius: prefer the smallest coherent change, preserve existing architecture and style, keep unrelated refactors out, avoid broad rewrites and mass formatting, and add abstractions only when there is a real boundary or repeated need.
 
+Before editing, inspect repository status. Existing modifications and untracked files belong to the user unless the task says otherwise. Agents MUST preserve them, MUST NOT silently overwrite or discard them, and MUST stop and report any overlap that cannot be resolved safely.
+
 Agents MUST NOT hand-edit generated files unless required, change public APIs or persisted contracts without calling out migration impact, hide uncertainty behind TODOs or broad fallbacks, or claim validation that was not run.
 
 ## 3. Repository Discovery
@@ -418,6 +413,8 @@ Agents MUST NOT hand-edit generated files unless required, change public APIs or
 Before implementation, inspect the repository source of truth instead of guessing. Check the relevant subset of `global.json`, `Directory.Build.props`, `Directory.Build.targets`, `.editorconfig`, solution files, affected `*.csproj` files, README/CONTRIBUTING/local docs, CI workflows, nearby tests, and existing patterns for dependency injection, logging, options, validation, errors, persistence, and test style.
 
 Agents MUST determine the configured .NET SDK, target framework, nullable setting, implicit usings setting, analyzer configuration, and `LangVersion` before introducing modern C# syntax. Do not use a language feature the repository does not enable unless the task includes upgrading language settings.
+
+On native Windows, treat shell invocations as expensive. Batch bounded, related read-only inspections; prefer `rg`, `rg --files`, `bat`, `git`, and `dotnet` over PowerShell object pipelines; use `rg -n -C 8` for context and `bat --line-range` for source ranges; and never use `Get-Content | Select-Object -Skip/-First` for source inspection. Scope builds and tests to the smallest affected project, use `--no-restore` only when dependencies are unchanged and restore already succeeded, iterate in Debug unless Release behavior matters, and do not run a full solution build or test suite after every small edit.
 
 ## 4. Modern C# and .NET
 
@@ -459,46 +456,54 @@ Agents MUST NOT disable authentication, authorization, HTTPS, certificate valida
 
 Tests must catch defects, document behavior, and enable safe change. Coverage numbers are secondary.
 
-Every test MUST fail if the behavior it claims to verify is removed or meaningfully broken. Delete or rewrite tests that only verify mocks, repeat implementation details, pass when core logic is deleted, obscure behavior with excessive setup, depend on order/time/local machine state/shared mutation, or exist only for coverage.
+Every behavioral test MUST fail if the behavior it claims to verify is removed or meaningfully broken. Clearly labeled compile, wiring, health, and contract smoke tests MAY prove infrastructure rather than domain behavior, but MUST assert the boundary they name. Delete or rewrite tests that only verify test doubles, repeat implementation details, obscure behavior with excessive setup, depend on order/time/local machine state/shared mutation, or exist only for coverage.
 
 Agents MUST test observable behavior: return values, state changes, persisted effects, published messages/events, validation failures, authorization boundaries, idempotency, edge cases, cancellation, and concurrency when relevant.
 
 Agents SHOULD NOT unit test pure pass-through methods with no branching, transformation, validation, or error handling. Prefer integration tests at real boundaries.
 
-Mocks are allowed only to isolate external boundaries or expensive dependencies. If a unit test needs more than three `Mock<T>` objects, refactor the production code to reduce coupling or write an integration test.
+Test doubles are allowed only to isolate external boundaries or expensive dependencies. More than three substitutes, mocks, or fakes in one test is a coupling warning: simplify the design or prefer an integration test unless the additional doubles are clearly justified.
 
 Tests MUST be deterministic: avoid real sleeps, unseeded randomness, current time without `TimeProvider` or a fake clock, shared ports/databases/files/static mutable state, and external state that is not isolated and cleaned up.
 
 Use integration tests for routing, middleware, serialization, database mapping, transactions, queues, external clients, configuration, dependency injection wiring, and other behavior that depends on real boundaries.
 
-## 9. TUnit and Microsoft.Testing.Platform
+## 9. TUnit test execution
 
-This repository uses TUnit on Microsoft.Testing.Platform (MTP). Agents MUST NOT assume VSTest behavior.
+This repository uses TUnit exclusively. TUnit runs on Microsoft.Testing.Platform (MTP), the test runner selected by `global.json`; MTP is infrastructure, not a second test framework. Do not add another test framework or adapter.
 
-Prefer full-suite validation with:
-
-```bash
-dotnet test -c Release
-dotnet test -c Release --timeout 10m
-```
-
-Use TUnit/MTP filters instead of VSTest filters:
+Use the TUnit runner selected in the repository `global.json` and identify the solution or project explicitly:
 
 ```bash
-dotnet test -c Release --treenode-filter "/*/*/ClassName/*"
-dotnet test -c Release --treenode-filter "/*/*/*/MethodName"
-dotnet test -c Release --treenode-filter "/*/*/*/*[Category=Integration]"
-dotnet test -c Release --treenode-filter "/*/*/*/*[Category!=Slow]"
+dotnet test --solution <solution>.slnx -c Release --no-launch-profile-arguments
+dotnet test --project test/<project>/<project>.csproj -c Release --no-launch-profile-arguments --timeout 10m
 ```
 
-If the SDK or runner rejects platform arguments, forward them after `--`:
+Use TUnit filters:
 
 ```bash
-dotnet test -c Release -- --treenode-filter "/*/*/ClassName/*"
-dotnet test -c Release -- --timeout 10m
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/ClassName/*"
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/*/MethodName"
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/*/*[Category=Integration]"
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --treenode-filter "/*/*/*/*[Category!=Slow]"
 ```
 
-Agents MUST NOT use VSTest-only options such as `--filter` or `--blame-hang` unless the repository explicitly configures VSTest for that project.
+Do not probe a test executable by forwarding discovery arguments through `dotnet test`. In particular, never run `dotnet test ... -- --help`, `dotnet test ... -- -?`, or `dotnet test ... -- --list-tests`; those arguments can collide with the .NET SDK/MTP protocol. Use the owning layer directly:
+
+```bash
+dotnet test --help
+dotnet run --project <test-project> -- --help
+dotnet run --project <test-project> -- --list-tests
+```
+
+If MTP reports a protocol or fail-fast error, do not retry blindly. Inspect the evaluated launch arguments and every injection point:
+
+```bash
+dotnet msbuild <test-project> -getProperty:TestingPlatformCommandLineArguments,RunArguments,RunCommand,RunWorkingDirectory
+rg -n "TestingPlatformCommandLineArguments|RunArguments|commandLineArgs|--help|-\?|--list-tests" .
+```
+
+Then inspect `Properties/launchSettings.json`, imported props/targets, wrappers, CI, and ancestor `global.json` files. Automated tests SHOULD use `--no-launch-profile-arguments`; use `--no-launch-profile` only when the entire profile, including environment variables and working directory, must be disabled. For SDK diagnostics, set `DOTNET_CLI_TEST_TRACEFILE` to a unique path per process or agent, never a shared trace file, and inspect the trace for hidden protocol arguments.
 
 Tag tests that need filtering with stable metadata such as `[Property("Category", "Integration")]`, `[Property("Category", "Slow")]`, `[Property("Priority", "High")]`, or `[Property("Owner", "<team-or-module>")]`.
 
@@ -506,10 +511,10 @@ Every test project MUST define a default timeout, for example `[assembly: Timeou
 
 TUnit runs tests in parallel by default. Isolate shared resources or use `[NotInParallel]`, `[ParallelGroup]`, or a repository-approved limiter only when isolation is not practical. Do not disable all parallelism to hide races.
 
-For real deadlocks or non-cooperative hangs, use MTP hang dump support:
+For real deadlocks or non-cooperative hangs, first add and centrally pin the optional `Microsoft.Testing.Extensions.HangDump` package in the affected test project. Only then use MTP hang dump options; without that extension, omit `--hangdump` and `--hangdump-timeout`:
 
 ```bash
-dotnet test -c Release --timeout 10m --hangdump --hangdump-timeout 2m
+dotnet test --project <test-project> -c Release --no-launch-profile-arguments --timeout 10m --hangdump --hangdump-timeout 2m
 ```
 
 ## 10. Automation and Tooling
@@ -518,12 +523,10 @@ Bash and PowerShell are deprecated for repository automation unless explicitly a
 
 C# file-based apps MUST be single `.cs` files unless converted to a project, use top-level statements for straightforward tools, use `#:package` for NuGet dependencies, use cross-platform path APIs, return explicit exit codes, print actionable errors to stderr, support `--help` when options exist, be idempotent by default, and provide `--dry-run` for destructive operations.
 
-When invoking `Build.cs`, follow the repository's documented form. If forwarding option-style args, include the script separator, for example:
+Use the .NET 10 file-app shorthand and forward task-runner arguments after `--`. The shorthand identifies `Build.cs` unambiguously, so `--file` is unnecessary; the separator keeps options such as `-c` and `--yes` from being consumed by the `dotnet` host:
 
 ```bash
-dotnet run Build.cs -- test -c Release
-# or, for SDKs using explicit file mode:
-dotnet run --file Build.cs -- test -c Release
+dotnet Build.cs -- test -c Release
 ```
 
 Automation MUST NOT delete, overwrite, or migrate data without `--dry-run` and confirmation, depend on developer-machine paths, require undocumented global tools, store secrets, or hide failing external commands.
@@ -539,6 +542,8 @@ Use Conventional Commits:
 The type and scope MUST be lowercase, the scope is mandatory, the description uses imperative present tense and has no trailing period, and each commit should contain one logical change. Do not add AI co-authors unless the repository explicitly requires it.
 
 Allowed types: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `ci`, `build`, `chore`, and `tool`.
+
+Agents MUST NOT create or switch branches, commit, amend, rebase, push, publish packages, open pull requests, or change Git identity unless the user explicitly authorizes that action. When authorization is given, preserve the user's worktree and keep review/remediation work on the current PR head.
 
 Agent-created branches MUST use one of these prefixes: `feature/`, `fix/`, `docs/`, `refactor/`, `test/`, `perf/`, `ci/`, `build/`, `chore/`, `tool/`, or `research/`. Include an issue number when one exists, for example `feature/issue-123-add-oauth-provider`.
 
@@ -561,8 +566,10 @@ Before final delivery, verify:
 - Nullable and analyzer warnings remain clean.
 - Code follows repository patterns for DI, async, cancellation, errors, logging, and security.
 - Tests assert behavior rather than implementation details.
-- TUnit filters, timeouts, cancellation, and parallelism controls use MTP-compatible options.
+- TUnit filters, timeouts, cancellation, and parallelism controls use the repository's native runner options.
+- Automated `dotnet test` commands identify a project or solution, use `--no-launch-profile-arguments`, and do not forward help/list arguments.
 - New automation is a C# file-based app when applicable.
+- Existing user changes remain intact and no Git or publishing action exceeded the user's authorization.
 - Final response includes exact validation results.
 - Proposed commit message follows `type(scope): description`.
 
@@ -575,7 +582,7 @@ Agents MUST NOT introduce mock-only tests, tests that pass when production logic
 If an agent violates this standard, it MUST immediately identify the violated rule, revert or replace the offending change, provide a compliant implementation, add or update tests proving the corrected behavior, re-run relevant validation, and state the remediation clearly.
 ````
 
-**Why**: This gives every scaffolded repository a consistent root-level agent contract covering delivery discipline, repository discovery, modern C# standards, behavior-focused testing, TUnit/MTP execution, safe automation, security, commits, and final response expectations without overloading the agent context window.
+**Why**: This gives every scaffolded repository a consistent root-level agent contract covering delivery discipline, repository discovery, modern C# standards, behavior-focused TUnit testing, safe automation, security, commits, and final response expectations without overloading the agent context window.
 
 **Agent note**: A weak `AGENTS.md` is a scaffold bug. Copy this contract, or adapt the user's stronger house standard to the new repository. Keep the root file concise; move deep project-specific guidance to linked docs instead of inflating `AGENTS.md`.
 
@@ -587,12 +594,18 @@ If an agent violates this standard, it MUST immediately identify the violated ru
   "isRoot": true,
   "tools": {
     "csharpier": {
-      "version": "<LATEST_CSHARPIER>",
+      "version": "1.3.0",
       "commands": ["csharpier"]
+    },
+    "dotnet-coverage": {
+      "version": "18.10.0",
+      "commands": ["dotnet-coverage"]
     }
   }
 }
 ```
+
+Both local tools are exact stable pins verified on 2026-08-14. Re-check the exact package IDs before scaffolding and keep coverage invocation on `dotnet tool run dotnet-coverage`.
 
 ### 1.16a `.csharpierrc.json`
 
@@ -630,7 +643,7 @@ A clear and concise description of what you expected to happen.
 **Environment**
 
 - OS: [e.g. Windows 11, Ubuntu 24.04]
-- .NET version: [e.g. 10.0.3]
+- .NET runtime version: [e.g. 10.0.11]
 - <APPNAME> version: [e.g. 1.2.3]
 
 **Additional context**
@@ -669,9 +682,9 @@ Add any other context about the feature request here.
 
 ## Test plan
 
-- [ ] `dotnet run Build.cs build Release` passes with zero warnings
-- [ ] `dotnet run Build.cs -- test -c Release` passes
-- [ ] `dotnet run Build.cs format check` passes (CSharpier + dotnet format)
+- [ ] `dotnet Build.cs -- build Release` passes with zero warnings
+- [ ] `dotnet Build.cs -- test -c Release` passes
+- [ ] `dotnet Build.cs -- format check` passes (CSharpier + dotnet format)
 - [ ] Affected docs, samples, or README were updated when public behavior changed
 - [ ] Manual validation was completed when the change touched a UI, CLI, or runtime workflow
 
@@ -850,7 +863,7 @@ dotnet_diagnostic.MA0051.severity = none
 
 Coverage tracking is optional for applications. If the user wants it, include the optional `codecov.yml` shown above. No additional coverage package is needed — TUnit already bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively.
 
-> ⚠️ **Do NOT use `coverlet.collector` or `coverlet.msbuild` with TUnit.** TUnit runs on Microsoft Testing Platform (MTP), not VSTest. Coverlet's VSTest data collectors are [not compatible with MTP](https://tunit.dev/docs/extending/code-coverage/) and will produce empty coverage. Coverage is collected via the `--coverage` flag (e.g., `dotnet test --coverage --coverage-output-format cobertura`).
+> **Coverage with TUnit**: Collect deterministic Cobertura output through the pinned `dotnet-coverage` local tool with `dotnet Build.cs -- coverage`. Keep coverage collection centralized in this task-runner command.
 >
 > **VS Code users**: Install the [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) extension to view inline coverage highlighting from the generated `coverage.cobertura.xml`.
 
@@ -907,19 +920,19 @@ See [Solution Structure](#solution-structure) for the full project breakdown.
 ### Setup
 
 ```shell
-dotnet run Build.cs format   # restores local tools on first run
+dotnet Build.cs -- format   # restores local tools on first run
 ```
 
 ### Build
 
 ```shell
-dotnet run Build.cs build
+dotnet Build.cs -- build
 ```
 
 ### Run
 
 ```shell
-dotnet run Build.cs run
+dotnet Build.cs -- run
 # or directly:
 dotnet run --project src/App/<APPNAME>/<APPNAME>.csproj
 ```
@@ -927,14 +940,14 @@ dotnet run --project src/App/<APPNAME>/<APPNAME>.csproj
 ### Test
 
 ```shell
-dotnet run Build.cs -- test -c Release
-dotnet run Build.cs coverage
+dotnet Build.cs -- test -c Release
+dotnet Build.cs -- coverage
 ```
 
 ### Publish
 
 ```shell
-dotnet run Build.cs publish win-x64
+dotnet Build.cs -- publish win-x64
 ```
 
 ## Solution Structure
@@ -953,14 +966,14 @@ dotnet run Build.cs publish win-x64
 ### Prerequisites
 
 - [.NET <DOTNET_VERSION> SDK](https://dotnet.microsoft.com/download)
-- Run `dotnet run Build.cs format` once after cloning to restore local tools (CSharpier + dotnet-coverage)
+- Run `dotnet Build.cs -- format` once after cloning to restore local tools (CSharpier + dotnet-coverage)
 
 ### Task Runner
 
 All common operations are available via `Build.cs`:
 
 ```shell
-dotnet run Build.cs help
+dotnet Build.cs -- help
 ```
 
 ### Code Formatting
@@ -969,10 +982,10 @@ This project uses **CSharpier** (opinionated C# formatter) and **`dotnet format`
 
 ```shell
 # Auto-format everything:
-dotnet run Build.cs format
+dotnet Build.cs -- format
 
 # Check only (CI-style, no changes):
-dotnet run Build.cs format check
+dotnet Build.cs -- format check
 ```
 
 IDE integration: Install the CSharpier extension for [VS Code](https://marketplace.visualstudio.com/items?itemName=csharpier.csharpier-vscode), [Visual Studio](https://marketplace.visualstudio.com/items?itemName=csharpier.CSharpier), or [Rider](https://plugins.jetbrains.com/plugin/18243-csharpier) for format-on-save.
@@ -1012,7 +1025,7 @@ At application scale, **Central Package Management (CPM)** is mandatory from day
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Build">
     <!-- CSharpier: opinionated C# formatting, enforced on every build via CSharpier.MsBuild -->
-    <PackageVersion Include="CSharpier.MsBuild" Version="<LATEST_CSHARPIER>" />
+    <PackageVersion Include="CSharpier.MsBuild" Version="1.3.0" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
@@ -1020,45 +1033,46 @@ At application scale, **Central Package Management (CPM)** is mandatory from day
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Core">
     <!-- Add as needed: System.Memory, System.Buffers, System.IO.Pipelines, etc. -->
-    <PackageVersion Include="System.Memory" Version="4.5.5" />
+    <PackageVersion Include="System.Memory" Version="4.6.3" />
+    <PackageVersion Include="System.IO.Pipelines" Version="10.0.10" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
        LOGGING
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Logging">
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.0" />
-    <PackageVersion Include="Serilog" Version="4.3.0" />
-    <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
-    <PackageVersion Include="Serilog.Extensions.Logging" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.11" />
+    <PackageVersion Include="Serilog" Version="4.4.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
        DEPENDENCY INJECTION
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="DI">
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.11" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
        TESTING
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Testing">
-    <PackageVersion Include="TUnit" Version="3.6.41" />
-    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="TUnit" Version="1.65.0" />
+    <PackageVersion Include="NSubstitute" Version="6.2.0" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════
        BENCHMARKS
        ═══════════════════════════════════════════════════════ -->
   <ItemGroup Label="Benchmarks">
-    <PackageVersion Include="BenchmarkDotNet" Version="0.14.0" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
   </ItemGroup>
 
 </Project>
@@ -1068,12 +1082,12 @@ At application scale, **Central Package Management (CPM)** is mandatory from day
 
 - **All `<PackageReference>` in `.csproj` files omit `Version`** — the version comes only from `Directory.Packages.props`.
 - **`CentralPackageTransitivePinningEnabled`** pins transitive dependencies too, preventing supply-chain version confusion.
-- Package versions shown above are **examples** — resolve current stable versions via `dotnet package search <name> --take 1` before scaffolding.
+- Versions above are the latest stable releases verified on **2026-08-14**. Re-check every direct dependency immediately before scaffolding with `dotnet package search <name> --exact-match --format json`; reject prereleases unless the user explicitly opts in.
 - Organize by labeled `<ItemGroup>` sections for readability. With 50+ packages, flat lists become unmanageable.
 
 **Agent note**: The package list above is a **starter template for a local application**. Remove packages the user doesn't need. Add domain-specific packages (data access libraries, UI frameworks, AI client SDKs, etc.) as the user specifies them. The point is the _structure_, not the exact package set. `CSharpier.MsBuild` is the one **non-optional** package — it enforces formatting from build one.
 
-> **Resolving `<LATEST_CSHARPIER>`**: Run `dotnet package search CSharpier --take 1` or visit [nuget.org/packages/CSharpier](https://www.nuget.org/packages/CSharpier/). The version in `Directory.Packages.props` must match the version in `.config/dotnet-tools.json` — they are the same tool, referenced in two ways (MSBuild analyzer vs CLI tool).
+> **Pin discipline**: `CSharpier.MsBuild` and the `csharpier` local tool are separate packages currently released at the same version. Verify both exact package IDs, restore, and run dependency vulnerability/audit checks before committing generated output. No unresolved version placeholder may remain.
 
 ---
 
@@ -1115,8 +1129,6 @@ Settings that apply to **every single project** — source code, tests, benchmar
     <NeutralLanguage>en</NeutralLanguage>
 
     <TargetFramework><DOTNET_VERSION></TargetFramework>
-    <CheckEolTargetFramework>false</CheckEolTargetFramework>
-
     <LangVersion><CSHARP_VERSION></LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
@@ -1127,9 +1139,8 @@ Settings that apply to **every single project** — source code, tests, benchmar
     <UseArtifactsOutput>true</UseArtifactsOutput>
     <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
 
-    <!-- Generate docs XML; suppress missing-doc warnings globally -->
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- Enable XML documentation only in projects that publish a public API;
+         never suppress CS1591 solution-wide. -->
 
     <!-- Analyzers: warnings are errors -->
     <AnalysisLevel>latest</AnalysisLevel>
@@ -1175,7 +1186,7 @@ Settings shared by all **source projects** (libraries + app) but NOT tests or be
 
     <!-- Allow unsafe code if the application needs P/Invoke, SIMD, or interop.
          Remove this line if your app has no unsafe code (set NEEDS_UNSAFE=false). -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
   </PropertyGroup>
 
 </Project>
@@ -1235,7 +1246,7 @@ dotnet build -p:Version=1.2.3 -p:InformationalVersion=1.2.3+abcdef1
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <!-- Allow unsafe in tests only if test code directly tests unsafe APIs -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
     <!-- ConfigureAwait not relevant in test code -->
     <NoWarn>$(NoWarn);CA2007</NoWarn>
   </PropertyGroup>
@@ -1251,18 +1262,24 @@ dotnet build -p:Version=1.2.3 -p:InformationalVersion=1.2.3+abcdef1
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)TestDefaults.cs" Link="TestDefaults.cs" />
+  </ItemGroup>
+
 </Project>
 ```
 
 **Why test packages go in Tier 3**: Every test project needs `TUnit` and a mocking framework. Declaring them once in the layer `Directory.Build.props` eliminates the need to repeat `<PackageReference Include="TUnit" />` in 30+ test `.csproj` files.
 
-> ⚠️ **TUnit + .NET 10 SDK compatibility**: TUnit uses `Microsoft.Testing.Platform` (MTP), which conflicts with the legacy VSTest runner that `dotnet test` uses by default on .NET 10 SDK. On .NET 10, `dotnet test` will fail with a `Microsoft.Testing.Platform.MSBuild.targets(263)` error unless you add this property to `Directory.Build.props` (the root one, **not** inside any test `.csproj`):
->
-> ```xml
-> <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-> ```
->
-> Add it under a `<PropertyGroup>` in the root `Directory.Build.props`. At application scale with 30+ test projects, this single line is much cleaner than configuring each project individually.
+> **TUnit + .NET 10**: This scaffold selects native MTP mode once in `global.json` with `"test": { "runner": "Microsoft.Testing.Platform" }`. Do not add the legacy `TestingPlatformDotnetTestSupport` compatibility property. Use `dotnet test --solution ...` or `dotnet test --project ...` and keep the entire solution on one test-runner mode.
+
+Create `src/Tests/TestDefaults.cs`; the test-layer props link it into every test project:
+
+```csharp
+using TUnit.Core;
+
+[assembly: Timeout(30_000)]
+```
 
 #### `src/Benchmarks/Directory.Build.props` — Benchmark layer (optional)
 
@@ -1274,7 +1291,7 @@ dotnet build -p:Version=1.2.3 -p:InformationalVersion=1.2.3+abcdef1
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AllowUnsafeBlocks><NEEDS_UNSAFE></AllowUnsafeBlocks>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>pdbonly</DebugType>
   </PropertyGroup>
@@ -1517,21 +1534,20 @@ public readonly record struct ServiceResult<T>
 }
 ```
 
-**`src/Domain/<APPNAME>.Domain/Services/MessageHandler.cs`** — Example domain service placeholder:
+**`src/Domain/<APPNAME>.Domain/Services/MessageHandler.cs`** — Small behavioral example:
 
 ```csharp
 using <ROOTNS>.Core.Types;
 
 namespace <ROOTNS>.Domain.Services;
 
-public class MessageHandler
+public sealed class MessageHandler
 {
     public ServiceResult<string> Handle(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
             return ServiceResult<string>.Fail("Input must not be empty.");
 
-        // TODO: Implement domain logic
         return ServiceResult<string>.Ok(input.Trim());
     }
 }
@@ -1850,20 +1866,20 @@ public class MessageHandlerBench
 
 ## Phase 9: `Build.cs` — Task Runner
 
-A single **.NET 10 file-based app** at the repo root. File-based apps require no `.csproj` — compiled and run via `dotnet run Build.cs`.
+A single **.NET 10 file-based app** at the repo root. File-based apps require no `.csproj`; invoke it with the .NET 10 shorthand `dotnet Build.cs -- help`.
 
-> **Hard requirement**: `Build.cs` file-based apps require the **.NET 10 SDK**. If your repository must be buildable with an older SDK only, fall back to PowerShell Core (`.ps1`) or a `Makefile` instead.
+> **Hard requirement**: `Build.cs` file-based apps require the **.NET 10 SDK**. If the repository must build with an older SDK only, use a conventional C# tool project such as `tools/Build/Build.csproj` and keep the same command contract.
 
 Application-specific commands (no pack or NuGet publish commands in an application repository):
 
 ### `Build.cs` (repo root)
 
-**Critical pitfall**: If any forwarded command arguments begin with `-` or `--` (for example `-c`, `--no-build`, `-o`, or `--verbosity`), keep the `--` separator after `Build.cs`. `dotnet run Build.cs test -c Release` is wrong because the outer `dotnet run` consumes `-c`.
+**Invocation rule**: Use `dotnet Build.cs -- test -c Release`. The .NET 10 shorthand already identifies the file app, so `--file` is not required. Keep the single `--` boundary so option-style task arguments such as `-c` are forwarded to `Build.cs`.
 
 ```csharp
-#!/usr/bin/env dotnet
+#!/usr/bin/env -S dotnet --
 // Task runner for <APPNAME>
-// Usage: dotnet run Build.cs <command> [args]
+// Usage: dotnet Build.cs -- <command> [args]
 
 #:property PublishAot=false
 
@@ -1887,7 +1903,7 @@ switch (command)
         return 0;
 
     case "test":
-        Run("dotnet", ["test", "--solution", solutionPath, .. commandArgs], repoRoot);
+        Run("dotnet", ["test", "--solution", solutionPath, "--no-launch-profile-arguments", .. commandArgs], repoRoot);
         return 0;
 
     case "coverage":
@@ -1921,36 +1937,46 @@ switch (command)
         return 0;
 
     case "clean":
+        if (!commandArgs.Contains("--yes", StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"Dry run: would delete '{Path.Combine(repoRoot, "artifacts")}' and '{Path.Combine(repoRoot, "publish")}', then run dotnet clean.");
+            Console.WriteLine("Re-run with: clean --yes");
+            return 0;
+        }
+
         DeleteIfPresent(Path.Combine(repoRoot, "artifacts"));
         DeleteIfPresent(Path.Combine(repoRoot, "publish"));
         Run("dotnet", ["clean", solutionPath], repoRoot);
         return 0;
 
-    case "prettier":
-        Run("npx",
-            [
-                "prettier",
-                "--write",
-                "**/*.{yml,yaml,json,md}",
-                "--ignore-path",
-                ".gitignore",
-            ],
-            repoRoot);
-        return 0;
-
     case "rename":
-        if (commandArgs.Length < 2)
+        var renameArgs = commandArgs.Where(arg => !string.Equals(arg, "--yes", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (renameArgs.Length != 2 || !IsSafeTemplateName(renameArgs[0]) || !IsSafeTemplateName(renameArgs[1]))
         {
-            Console.Error.WriteLine("Usage: dotnet run Build.cs rename <OldName> <NewName>");
+            Console.Error.WriteLine("Usage: dotnet Build.cs -- rename <OldName> <NewName> [--yes]");
             return 1;
         }
 
-        RenameAll(repoRoot, commandArgs[0], commandArgs[1]);
+        if (!commandArgs.Contains("--yes", StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"Dry run: would rename '{renameArgs[0]}' to '{renameArgs[1]}' throughout '{repoRoot}'.");
+            Console.WriteLine("Validate in a clean temporary worktree, then re-run with --yes.");
+            return 0;
+        }
+
+        RenameAll(repoRoot, renameArgs[0], renameArgs[1]);
+        return 0;
+
+    case "help":
+    case "-h":
+    case "--help":
+        Help();
         return 0;
 
     default:
+        Console.Error.WriteLine($"Unknown command: '{command}'.");
         Help();
-        return 0;
+        return 2;
 }
 
 void Publish(string[] arguments)
@@ -2003,8 +2029,7 @@ void Format(string[] arguments)
 void Help()
 {
     Console.WriteLine(
-        @"Usage: dotnet run Build.cs <command> [args]
-       dotnet run Build.cs -- <command> [args]   (use -- when forwarding option-style args)
+        @"Usage: dotnet Build.cs -- <command> [args]
 
 Commands:
     build [config]                  Build the solution (default: Debug)
@@ -2014,9 +2039,9 @@ Commands:
     publish [rid] [config] [args]   Publish the app with forwarded dotnet publish args
     bench [args]                    Run BenchmarkDotNet benchmarks
     format [check]                  Run CSharpier plus dotnet format style/analyzers
-    clean                           Delete artifacts and publish output, then clean the solution
-    prettier                        Format YAML/Markdown/JSON via Prettier (requires Node)
-    rename <OldName> <NewName>      Rename template throughout repository
+    clean [--yes]                   Preview cleanup; --yes deletes generated output
+    rename <OldName> <NewName> [--yes]
+                                    Preview rename; --yes applies it after validation
     help                            Show this command list"
     );
 }
@@ -2029,6 +2054,13 @@ static void DeleteIfPresent(string path)
     Directory.Delete(path, recursive: true);
     Console.WriteLine($"Deleted {path}");
 }
+
+static bool IsSafeTemplateName(string value) =>
+    !string.IsNullOrWhiteSpace(value)
+    && value is not "." and not ".."
+    && value.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
+    && !value.Contains(Path.DirectorySeparatorChar)
+    && !value.Contains(Path.AltDirectorySeparatorChar);
 
 static IEnumerable<string> ProjectFiles(string repoRoot) =>
     Directory
@@ -2060,9 +2092,12 @@ static void CollectCoverage(string repoRoot, string projectPath, string coverage
 
     Run("dotnet",
         [
+            "tool",
+            "run",
             "dotnet-coverage",
+            "--",
             "collect",
-            $"dotnet test {QuoteCommandValue(projectRelativePath)} -c Release --no-build --no-restore --verbosity normal",
+            $"dotnet test --project {QuoteCommandValue(projectRelativePath)} -c Release --no-build --no-restore --no-launch-profile-arguments --verbosity normal",
             "--output",
             outputPath,
             "--output-format",
@@ -2313,7 +2348,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version tag to create (e.g. 1.2.3)"
+        description: "Stable release version to create (MAJOR.MINOR.PATCH)"
         required: false
 
 env:
@@ -2331,43 +2366,43 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
       - name: Build
-        run: dotnet run Build.cs build ${{ matrix.configuration }}
+        run: dotnet Build.cs -- build ${{ matrix.configuration }}
 
       - name: Test
-        run: dotnet run Build.cs -- test -c ${{ matrix.configuration }} --no-build --verbosity normal
+        run: dotnet Build.cs -- test -c ${{ matrix.configuration }} --no-build --verbosity normal
 
   coverage:
     needs: build-and-test
     runs-on: windows-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup .NET (global.json)
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
       - name: Collect coverage
-        run: dotnet run Build.cs coverage
+        run: dotnet Build.cs -- coverage
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -2392,20 +2427,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup .NET
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
       - name: Verify formatting
-        run: dotnet run Build.cs format check
+        run: dotnet Build.cs -- format check
 
   publish:
     needs: [build-and-test, coverage, format]
-    if: github.ref == 'refs/heads/main' || github.event.inputs.version != ''
+    if: github.ref == 'refs/heads/main'
     strategy:
       matrix:
         include:
@@ -2421,36 +2456,45 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
       - name: Set version
         id: version
         shell: bash
+        env:
+          REQUESTED_VERSION: ${{ github.event.inputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          stable_semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if [ -n "$REQUESTED_VERSION" ]; then
+            if [[ ! "$REQUESTED_VERSION" =~ $stable_semver ]]; then
+              echo "Version must be stable SemVer MAJOR.MINOR.PATCH without leading zeroes." >&2
+              exit 2
+            fi
+            printf 'version=%s\n' "$REQUESTED_VERSION" >> "$GITHUB_OUTPUT"
           else
-            echo "version=0.0.0-ci.${{ github.run_number }}" >> $GITHUB_OUTPUT
+            printf 'version=0.0.0-ci.%s\n' "$RUN_NUMBER" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish
-        run: >
-          dotnet run Build.cs --
-          publish
-          ${{ matrix.rid }}
-          Release
-          --self-contained
-          -p:Version=${{ steps.version.outputs.version }}
-          -o publish/${{ matrix.rid }}
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          TARGET_RID: ${{ matrix.rid }}
+        run: |
+          dotnet Build.cs -- publish "$TARGET_RID" Release \
+            --self-contained \
+            "-p:Version=$RELEASE_VERSION" \
+            -o "publish/$TARGET_RID"
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -2462,18 +2506,18 @@ jobs:
 
   create-release:
     needs: [publish]
-    if: github.event.inputs.version != ''
+    if: github.ref == 'refs/heads/main' && github.event.inputs.version != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -2483,15 +2527,16 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
         run: |
           cd release-artifacts
           for dir in */; do
             (cd "$dir" && zip -r "../${dir%/}.zip" .)
           done
           cd ..
-          gh release create "v${{ github.event.inputs.version }}" \
+          gh release create "v${RELEASE_VERSION}" \
             release-artifacts/*.zip \
-            --title "v${{ github.event.inputs.version }}" \
+            --title "v${RELEASE_VERSION}" \
             --generate-notes
 ```
 
@@ -2503,24 +2548,24 @@ jobs:
 - Release creates a GitHub Release with zipped binaries, not a NuGet push
 - Version is driven by `workflow_dispatch` input or CI run number, not MinVer
 
-**Agent note — resolving `<PINNED-SHA>` placeholders**: AI agents cannot browse GitHub at scaffold time. Before scaffolding, the user (or a setup script) must populate the SHA lookup table below. Run the helper command for each action to get the current commit hash:
+**Immutable action pins**: The workflow above is fully pinned. Re-verify releases and commit objects at scaffold time rather than choosing the lexically last tag:
 
 ```shell
-# Example: resolve actions/checkout latest release SHA
-git ls-remote --tags https://github.com/actions/checkout | tail -1
-# Or visit: https://github.com/actions/checkout/releases → copy commit SHA
+# Verify a deliberately selected release tag and its peeled commit, if annotated:
+git ls-remote --tags https://github.com/actions/checkout "refs/tags/v7.0.1" "refs/tags/v7.0.1^{}"
+# Confirm the release and commit at https://github.com/actions/checkout/releases
 ```
 
 | Action                        | Pinned to version | SHA                                        | Last verified |
 | ----------------------------- | ----------------- | ------------------------------------------ | ------------- |
-| `step-security/harden-runner` | v2.19.4           | `9af89fc71515a100421586dfdb3dc9c984fbf411` | 2026-06-10    |
-| `actions/checkout`            | v6.0.3            | `df4cb1c069e1874edd31b4311f1884172cec0e10` | 2026-06-10    |
-| `actions/setup-dotnet`        | v5.3.0            | `9a946fdbd5fb07b82b2f5a4466058b876ab72bb2` | 2026-06-10    |
-| `codecov/codecov-action`      | v7.0.0            | `fb8b3582c8e4def4969c97caa2f19720cb33a72f` | 2026-06-10    |
-| `actions/upload-artifact`     | v7.0.1            | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | 2026-06-10    |
-| `actions/download-artifact`   | v8.0.1            | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-06-10    |
+| `step-security/harden-runner` | v2.20.1           | `b09bb98e06d4d774595224525879c09bc6e98c40` | 2026-08-14    |
+| `actions/checkout`            | v7.0.1            | `3d3c42e5aac5ba805825da76410c181273ba90b1` | 2026-08-14    |
+| `actions/setup-dotnet`        | v6.0.0            | `a98b56852c35b8e3190ac28c8c2271da59106c68` | 2026-08-14    |
+| `codecov/codecov-action`      | v7.0.0            | `fb8b3582c8e4def4969c97caa2f19720cb33a72f` | 2026-08-14    |
+| `actions/upload-artifact`     | v7.0.1            | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | 2026-08-14    |
+| `actions/download-artifact`   | v8.0.1            | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` | 2026-08-14    |
 
-If the table above is empty at scaffold time, the agent **must** use version tags as a temporary fallback (e.g., `actions/checkout@v6`) and add a `TODO:` comment on each line: `# TODO: Pin to full SHA before merging to main`. The Phase 14 validation checklist will catch these.
+Pin the peeled commit for annotated tags and the tag target for lightweight tags; never pin a tag-object SHA. If an exact 40-character commit SHA cannot be verified, stop scaffolding the workflow. Floating tags and TODO fallbacks are not acceptable generated output.
 
 ### 11.2 `.github/dependabot.yml`
 
@@ -2568,7 +2613,7 @@ For complex publish scenarios, create publish profiles:
 Create one per target platform. Invoke via:
 
 ```shell
-dotnet run Build.cs -- publish win-x64 Release /p:PublishProfile=win-x64
+dotnet Build.cs -- publish win-x64 Release /p:PublishProfile=win-x64
 ```
 
 ---
@@ -2579,19 +2624,19 @@ Before declaring the scaffold complete, verify:
 
 ### Build and Test
 
-- [ ] `dotnet run Build.cs build Debug` passes with zero warnings
-- [ ] `dotnet run Build.cs build Release` passes with zero warnings (CSharpier.MsBuild checks formatting automatically)
-- [ ] `dotnet run Build.cs -- test -c Debug` passes (all test projects)
-- [ ] `dotnet run Build.cs -- test -c Release` passes
-- [ ] README, CONTRIBUTING, AGENTS, and workflow commands that forward option-style args to `Build.cs` use the `dotnet run Build.cs -- ...` form
-- [ ] `dotnet run Build.cs coverage` writes Cobertura XML to `artifacts/TestResults/`
-- [ ] `dotnet run Build.cs format check` passes (runs both CSharpier + dotnet format)
+- [ ] `dotnet Build.cs -- build Debug` passes with zero warnings
+- [ ] `dotnet Build.cs -- build Release` passes with zero warnings (CSharpier.MsBuild checks formatting automatically)
+- [ ] `dotnet Build.cs -- test -c Debug` passes (all test projects)
+- [ ] `dotnet Build.cs -- test -c Release` passes
+- [ ] README, CONTRIBUTING, AGENTS, and workflow commands that forward option-style args to `Build.cs` use the `dotnet Build.cs -- ...` form
+- [ ] `dotnet Build.cs -- coverage` writes Cobertura XML to `artifacts/TestResults/`
+- [ ] `dotnet Build.cs -- format check` passes (runs both CSharpier + dotnet format)
 
 ### Application
 
 - [ ] `dotnet run --project src/App/<APPNAME>/<APPNAME>.csproj` starts and exits cleanly
-- [ ] `dotnet run Build.cs run` starts and exits cleanly
-- [ ] `dotnet run Build.cs publish win-x64` produces output in `publish/win-x64/`
+- [ ] `dotnet Build.cs -- run` starts and exits cleanly
+- [ ] `dotnet Build.cs -- publish win-x64` produces output in `publish/win-x64/`
 - [ ] The published executable runs standalone
 
 ### Solution Structure
@@ -2604,7 +2649,7 @@ Before declaring the scaffold complete, verify:
 
 ### CI and Repository Health
 
-- [ ] All action SHAs in `.github/workflows/dotnet.yml` are 40-char hashes (or have `# TODO:` comments)
+- [ ] All action references in `.github/workflows/dotnet.yml` are verified 40-character commit SHAs; no floating tag or TODO fallback remains
 - [ ] `.github/dependabot.yml` exists
 - [ ] `SECURITY.md` exists
 - [ ] `CONTRIBUTING.md` exists
@@ -2614,8 +2659,8 @@ Before declaring the scaffold complete, verify:
 
 ### Task Runner
 
-- [ ] `dotnet run Build.cs help` prints the command list without errors
-- [ ] `dotnet run Build.cs rename <APPNAME> TestRename` runs without errors; revert with `dotnet run Build.cs rename TestRename <APPNAME>`
+- [ ] `dotnet Build.cs -- help` prints the command list without errors
+- [ ] `dotnet Build.cs -- rename <APPNAME> TestRename` reports a dry-run plan; apply and revert only in a clean temporary worktree with `--yes`
 
 ### Solution Filters (if created)
 
@@ -2736,12 +2781,12 @@ After all phases, the repository contains these files (substitute `<APPNAME>` an
 | Multiple executables (host + worker + CLI tools)       | Add more projects under `src/App/`: `<APPNAME>.Worker/`, `<APPNAME>.Tools.Importer/` — each with its own `.csproj`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Shared code between multiple apps                      | Extract into a `src/Shared/<APPNAME>.Shared/` project referenced by both apps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Native interop (P/Invoke)                              | Add `<APPNAME>.Native/` project under the relevant layer with `NativeLibrary.Load` and runtime-specific native binaries                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Plugin extension system                                | Add `<APPNAME>.Sdk/` project defining the extension point interfaces; this IS packable (`<IsPackable>true</IsPackable>`) and ships as a NuGet package for external plugin authors                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Plugin extension system                                | Add a packable `<APPNAME>.Sdk/` project for extension contracts. If it publishes to nuget.org, use a protected release environment plus `id-token: write` and immutable `NuGet/login` OIDC pin; request the temporary key immediately before push and do not make a long-lived API key the default.                                                                                                                                                                                                                                            |
 | Docker deployment                                      | Add `Dockerfile` and `docker-compose.yml` at repo root; CI builds and pushes container images instead of zip artifacts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Team uses Rider                                        | Replace `.slnx` with `.sln` via `dotnet new sln` + `dotnet sln add`. Keep solution folders by using `dotnet sln add --solution-folder`. Rider `.slnx` support is partial.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Need circular dependency removed between two layers    | Extract the shared types or interfaces into a new intermediate layer (e.g., `Domain.Abstractions`) that both sides can reference without creating a cycle                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Need code coverage tracking                            | No additional packages needed \u2014 TUnit bundles `Microsoft.Testing.Extensions.CodeCoverage` transitively. In CI add `--coverage --coverage-output-format cobertura` to `dotnet test`. Do NOT use `coverlet.collector` \u2014 it is a VSTest data collector and [does not work with TUnit's MTP runner](https://tunit.dev/docs/extending/code-coverage/). **VS Code**: install [Coverage Gutters](https://marketplace.visualstudio.com/items?itemName=ryanluker.vscode-coverage-gutters) for inline coverage display.                                                                                       |
-| Agent orchestration use case                           | Add an `Agents/` layer containing agent definitions, tool registrations, and orchestration logic. Depends on `Domain` and `Infrastructure`. Add Microsoft.Extensions.AI or Semantic Kernel packages to `Directory.Packages.props`; register them in `Program.cs` DI composition root.                                                                                                                                                                                                                                                                                                                      |
+| Need code coverage tracking                            | Keep test projects on TUnit and use the pinned `dotnet-coverage` local tool through `dotnet Build.cs -- coverage`. Upload the deterministic Cobertura files from `artifacts/TestResults/`. **VS Code**: Coverage Gutters can display the generated XML inline.                                                                                                                                                                                             |
+| Agent orchestration use case                           | Add an `Agents/` layer with typed agent/tool contracts and DI composition. Treat model/tool output and retrieved content as untrusted input; enforce tool allowlists, schema validation, least-privilege credentials, side-effect approval, time/token/retry budgets, cancellation, prompt/tool-injection boundaries, and tamper-evident audit logs. Pin the selected AI packages only after current-version and security review.                                                                                                                         |
 | Multi-targeting (net8.0 + net10.0)                     | Change `<TargetFramework>` to `<TargetFrameworks>` in root `Directory.Build.props`; be aware this doubles build time                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Release versioning from CI                             | In CI workflow, pass `-p:Version=X.Y.Z -p:InformationalVersion=X.Y.Z+<commit-sha>` to build and publish steps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Need Git commit hash in app                            | Add `<SourceRevisionId>$(GITHUB_SHA)</SourceRevisionId>` to root `Directory.Build.props` under a `Condition="'$(GITHUB_ACTIONS)' == 'true'"` guard. Access at runtime via `Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()`.                                                                                                                                                                                                                                                                                                                                                           |
